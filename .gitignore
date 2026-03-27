@@ -1,0 +1,38 @@
+# Build artifacts
+vessel/target/
+kernels/lume/target/
+out.jam
+*.jam.bak
+
+# Runtime state
+.fakenet/
+vessel/.data.lume/
+*.pid
+
+# Internal
+.dev/
+.claude/
+CLAUDE.md
+
+# Nockchain build symlinks (user creates during setup)
+hoon/common
+hoon/apps
+hoon/dat
+hoon/jams
+hoon/test-jams
+hoon/trivial.hoon
+
+# OS
+.DS_Store
+*.swp
+*~
+
+# Environment overrides
+.env
+.env.local
+
+# Debug scaffolds
+setup_lab.sh
+protocol/lib/lume-debug.hoon
+protocol/lib/lume-identity.hoon
+protocol/tests/sanity.hoon
