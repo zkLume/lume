@@ -8,8 +8,8 @@
 ::  10 total assertions: 2 baseline + 8 attack.
 ::  Compilation success = all attacks blocked = protocol secure.
 ::
-/-  *lume
-/+  *lume-logic
+/-  *vesl
+/+  *vesl-logic
 ::
 ::  ============================================================
 ::  SHARED SETUP: 4-leaf Merkle tree — hedge fund Q3 data vault
@@ -59,7 +59,7 @@
 ::
 ::  Pending note for settle-note tests
 ::
-=/  pending-note  [id=42 vessel=7 root=root state=[%pending ~]]
+=/  pending-note  [id=42 hull=7 root=root state=[%pending ~]]
 ::
 ::  ============================================================
 ::  BASELINE: confirm valid case passes before attacking

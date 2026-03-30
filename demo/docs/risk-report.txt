@@ -1,0 +1,9 @@
+Risk Exposure Assessment — Q3 2026
+
+Variable-rate instrument exposure stands at $800K, concentrated in 90-day commercial paper. Interest rate sensitivity: a 100bp increase would reduce portfolio value by approximately $12K.
+
+Counterparty risk remains low with 94% of deposits held at Tier-1 institutions. The remaining 6% is distributed across two fintech partners with BBB+ ratings.
+
+Operational risk: SOC2 Type II audit scheduled for Q4 2026. Pre-audit gap analysis identified 3 medium-priority findings in access control logging. Remediation timeline: 6 weeks.
+
+Cyber insurance coverage renewed at $5M aggregate with a $50K deductible, reflecting a 15% premium reduction from the prior year due to improved security posture.

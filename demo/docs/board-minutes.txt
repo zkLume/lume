@@ -1,0 +1,9 @@
+Board of Directors Meeting Minutes — September 2026
+
+Series B Funding: Board unanimously approved proceeding with Series B fundraise at $45M pre-money valuation. Lead investor: Meridian Capital. Expected close: November 2026. Proceeds allocated 40% to engineering headcount, 30% to go-to-market, 30% to working capital reserve.
+
+Product Roadmap: CTO presented the Q4 roadmap emphasizing three priorities: (1) enterprise SSO integration, (2) real-time analytics pipeline, and (3) SOC2 certification completion. Board approved the $180K budget allocation for the SOC2 audit engagement.
+
+Hiring Plan: VP Engineering approved to expand the team from 12 to 18 engineers by Q1 2027. Priority roles: 2 senior backend, 2 ML engineers, 1 security engineer, 1 DevOps lead.
+
+Next Meeting: December 15, 2026. Agenda to include Series B close update and Q4 financial review.

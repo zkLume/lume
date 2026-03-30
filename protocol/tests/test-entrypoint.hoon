@@ -1,13 +1,13 @@
 ::  protocol/tests/test-entrypoint.hoon: ABI boundary serialization test
 ::
-::  Tests the jam/cue boundary between Rust Vessel and Nock Prover.
+::  Tests the jam/cue boundary between Rust Hull and Nock Prover.
 ::  Proves valid payloads settle and malformed payloads crash at
 ::  the mold boundary before reaching any logic.
 ::  Compilation success = all assertions passed.
 ::
-/-  *lume
-/+  *lume-logic
-/+  *lume-entrypoint
+/-  *vesl
+/+  *vesl-logic
+/+  *vesl-entrypoint
 ::
 ::  ============================================
 ::  SETUP: Build valid hedge fund scenario
@@ -39,23 +39,23 @@
 =/  valid-mani
   [query=query results=results prompt=valid-prompt output='Based on your Q3 data...']
 ::
-=/  pending-note  [id=42 vessel=7 root=root state=[%pending ~]]
+=/  pending-note  [id=42 hull=7 root=root state=[%pending ~]]
 ::
 ::  ============================================
 ::  TEST 1: Valid jammed payload -> settled note
 ::  ============================================
 ::
-::  Simulate Rust Vessel: jam the [note manifest root] tuple
+::  Simulate Rust Hull: jam the [note manifest root] tuple
 ::  into a single atom, exactly as the off-chain client would.
 ::
 =/  payload=@  (jam [pending-note valid-mani root])
 ::
 ::  Pass through the ABI boundary
 ::
-=/  result  (lume-entrypoint payload)
+=/  result  (vesl-entrypoint payload)
 ?>  =(state.result [%settled ~])
 ?>  =(id.result 42)
-?>  =(vessel.result 7)
+?>  =(hull.result 7)
 ::
 ::  ============================================
 ::  TEST 2: Garbage payload -> crash at mold
@@ -66,7 +66,7 @@
 ::  and crashes BEFORE any logic executes.
 ::
 =/  garbage=@  (jam [%malicious 'data'])
-=/  crash-test  (mule |.((lume-entrypoint garbage)))
+=/  crash-test  (mule |.((vesl-entrypoint garbage)))
 ?<  -.crash-test
 ::
 %pass

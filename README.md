@@ -1,20 +1,20 @@
-# Lume
+# Vesl
 
-Lume is a NockApp. It ingests data into a tip5 Merkle tree, retrieves chunks against queries with inclusion proofs, verifies prompt integrity in a Hoon kernel, and generates STARK proofs that the Nock VM executed the settlement correctly. The root is the only thing that touches the chain.
+Vesl is a verified execution and settlement layer on Nockchain. It ingests data into a Merkle tree, retrieves chunks against queries with inclusion proofs, verifies prompt integrity in a Hoon kernel, and generates STARK proofs that the Nock VM executed the settlement correctly. The root is the only thing that touches the chain.
 
 
 ## Structure
 
 ```
 protocol/                 Hoon — the trust anchor
-  sur/lume.hoon             types
-  lib/lume-logic.hoon       verification gates (tip5 Merkle, prompt integrity)
-  lib/lume-kernel.hoon      NockApp kernel (poke/peek/load)
-  lib/lume-prover.hoon      STARK proof generation
-  lib/lume-verifier.hoon    STARK proof verification
+  sur/vesl.hoon             types
+  lib/vesl-logic.hoon       verification gates (tip5 Merkle, prompt integrity)
+  lib/vesl-kernel.hoon      NockApp kernel (poke/peek/load)
+  lib/vesl-prover.hoon      STARK proof generation
+  lib/vesl-verifier.hoon    STARK proof verification
   tests/                    8 compile-time assertion tests
 
-vessel/                   Rust — the off-chain pipeline
+hull/                   Rust — the off-chain pipeline
   src/merkle.rs             tip5 Merkle tree (cross-VM aligned with Hoon)
   src/chain.rs              on-chain settlement encoding (Strategy A)
   src/api.rs                HTTP: /ingest, /query, /status
@@ -22,8 +22,8 @@ vessel/                   Rust — the off-chain pipeline
   src/llm.rs                LLM integration (Ollama, trait-based)
   tests/                    pipeline, adversarial, fakenet
 
-kernels/lume/             kernel compilation crate
-assets/lume.jam           compiled kernel
+kernels/vesl/             kernel compilation crate
+assets/vesl.jam           compiled kernel
 scripts/                  fakenet harness
 ```
 
@@ -32,16 +32,16 @@ scripts/                  fakenet harness
 Requires the [nockchain](https://github.com/zorp-corp/nockchain) monorepo cloned and built, with `hoonc` and `nockchain` in your PATH.
 
 ```bash
-git clone https://github.com/sobchek/lume.git
-cd lume
+git clone https://github.com/sobchek/vesl.git
+cd vesl
 
 export NOCK_HOME=~/path/to/nockchain
 ./scripts/setup-hoon-tree.sh
 
-cd vessel && cargo build
+cd hull && cargo build
 ```
 
-Rust toolchain: `nightly-2025-11-26` (pinned in `vessel/rust-toolchain`).
+Rust toolchain: `nightly-2025-11-26` (pinned in `hull/rust-toolchain`).
 
 ## Test
 
@@ -68,8 +68,8 @@ hoonc --arbitrary protocol/tests/prove-verify.hoon hoon/
 ## Compile the kernel
 
 ```bash
-hoonc --new protocol/lib/lume-kernel.hoon hoon/
-cp out.jam assets/lume.jam
+hoonc --new protocol/lib/vesl-kernel.hoon hoon/
+cp out.jam assets/vesl.jam
 ```
 
 Use `--new` after modifying Hoon source. hoonc caches aggressively.
@@ -77,7 +77,7 @@ Use `--new` after modifying Hoon source. hoonc caches aggressively.
 ## HTTP API
 
 ```bash
-cd vessel && cargo run
+cd hull && cargo run
 ```
 
 | Endpoint | Method | |

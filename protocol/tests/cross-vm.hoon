@@ -1,20 +1,20 @@
 ::  protocol/tests/cross-vm.hoon: Cross-VM alignment proof
 ::
-::  Uses the EXACT same data as the Rust Vessel's test scenario:
+::  Uses the EXACT same data as the Rust Hull's test scenario:
 ::    - Same 4 chunks (Q3 revenue, risk exposure, board, SOC2)
 ::    - Same query ("Summarize Q3 financial position")
 ::    - Same retrieved indices (0, 1) with score=950.000
 ::    - Same prompt construction (query + \n + chunk0 + \n + chunk1)
 ::
 ::  If this compiles, the Hoon ZK-circuit correctly processes
-::  data matching the Rust Vessel's output.
+::  data matching the Rust Hull's output.
 ::
-/-  *lume
-/+  *lume-logic
-/+  *lume-entrypoint
+/-  *vesl
+/+  *vesl-logic
+/+  *vesl-entrypoint
 ::
 ::  ============================================
-::  EXACT Rust Vessel data — same as vessel/src/noun_builder.rs
+::  EXACT Rust Hull data — same as hull/src/noun_builder.rs
 ::  ============================================
 ::
 =/  h0  (hash-leaf 'Q3 revenue: $4.2M ARR, 18% QoQ growth')
@@ -63,7 +63,7 @@
 =/  valid-mani
   [query=query results=results prompt=valid-prompt output=output]
 ::
-=/  pending-note  [id=42 vessel=7 root=root state=[%pending ~]]
+=/  pending-note  [id=42 hull=7 root=root state=[%pending ~]]
 ::
 ::  ============================================
 ::  TEST 1: Direct settlement (no jam/cue boundary)
@@ -72,23 +72,23 @@
 =/  direct-result  (settle-note pending-note valid-mani root)
 ?>  =(state.direct-result [%settled ~])
 ?>  =(id.direct-result 42)
-?>  =(vessel.direct-result 7)
+?>  =(hull.direct-result 7)
 ::
 ::  ============================================
 ::  TEST 2: Full ABI boundary (jam → cue → ;; → settle)
 ::  ============================================
 ::
 =/  payload=@  (jam [pending-note valid-mani root])
-=/  abi-result  (lume-entrypoint payload)
+=/  abi-result  (vesl-entrypoint payload)
 ?>  =(state.abi-result [%settled ~])
 ?>  =(id.abi-result 42)
-?>  =(vessel.abi-result 7)
+?>  =(hull.abi-result 7)
 ::
 ::  ============================================
 ::  TEST 3: Output the jammed payload for comparison with Rust
 ::  ============================================
 ::
 ::  The payload atom can be compared byte-for-byte with
-::  vessel/tests/test_payload.jam to prove cross-VM alignment.
+::  hull/tests/test_payload.jam to prove cross-VM alignment.
 ::
 payload

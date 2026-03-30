@@ -1,4 +1,4 @@
-::  Compute the Merkle root from the exact Rust Vessel data.
+::  Compute the Merkle root from the exact Rust Hull data.
 ::  Output: the root hash atom (for cross-VM comparison).
 ::
-/+  *lume-logic
+/+  *vesl-logic

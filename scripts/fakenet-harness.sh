@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Lume Fakenet Test Harness
+# Vesl Fakenet Test Harness
 #
 # Boots a local Nockchain fakenet (hub + miner) and optionally runs
-# the Lume vessel E2E integration tests against it.
+# the Vesl hull E2E integration tests against it.
 #
 # Prerequisites:
 #   - nockchain binary in PATH (make install-nockchain from $NOCK_HOME)
 #   - nockchain-wallet binary in PATH (make install-nockchain-wallet)
-#   - vessel binary built (cargo build from lume/vessel/)
+#   - hull binary built (cargo build from vesl/hull/)
 #
 # Usage:
 #   # Boot fakenet only (keep running for manual testing):
@@ -31,7 +31,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-VESSEL_DIR="$PROJECT_ROOT/vessel"
+HULL_DIR="$PROJECT_ROOT/hull"
 
 # Load environment
 ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env.fakenet}"
@@ -43,8 +43,10 @@ fi
 # Defaults (can override via .env.fakenet or environment)
 NOCKCHAIN_GRPC_ADDR="${NOCKCHAIN_GRPC_ADDR:-127.0.0.1:9090}"
 WALLET_GRPC_ADDR="${WALLET_GRPC_ADDR:-http://localhost:5555}"
-LUME_API_PORT="${LUME_API_PORT:-3000}"
-MINING_PKH="${MINING_PKH:-9yPePjfWAdUnzaQKyxcRXKRa5PpUzKKEwtpECBZsUYt9Jd7egSDEWoV}"
+VESL_API_PORT="${VESL_API_PORT:-3000}"
+# Demo signing key PKH — derived from hull::signing::demo_signing_key()
+# (sk[0]=12345, sk[1]=67890). This ensures the hull can spend mined coinbase UTXOs.
+MINING_PKH="${MINING_PKH:-5pJiNWqnouxku6SvGU6XZhu98nHH5VFMaNJ4r1vtHxPJ5sHurHBfYnk}"
 FAKENET_POW_LEN="${FAKENET_POW_LEN:-2}"
 FAKENET_LOG_DIFFICULTY="${FAKENET_LOG_DIFFICULTY:-1}"
 
@@ -108,7 +110,7 @@ wait_for_port() {
 cmd_start() {
     check_binary nockchain
 
-    log "Starting Lume fakenet..."
+    log "Starting Vesl fakenet..."
     mkdir -p "$HUB_DIR" "$MINER_DIR"
 
     # --- Start hub node ---
@@ -170,7 +172,7 @@ cmd_start() {
     log "  Hub log:    $FAKENET_DIR/hub.log"
     log "  Miner log:  $FAKENET_DIR/miner.log"
     log ""
-    log "To run Lume tests:"
+    log "To run Vesl tests:"
     log "  ./scripts/fakenet-harness.sh test"
 }
 
@@ -215,16 +217,16 @@ cmd_status() {
 }
 
 cmd_test() {
-    log "Running Lume E2E fakenet tests..."
+    log "Running Vesl E2E fakenet tests..."
     log "  Chain endpoint: http://$NOCKCHAIN_GRPC_ADDR"
     log "  Wallet gRPC:    $WALLET_GRPC_ADDR"
 
-    cd "$VESSEL_DIR"
+    cd "$HULL_DIR"
 
-    LUME_FAKENET_CHAIN_ENDPOINT="http://$NOCKCHAIN_GRPC_ADDR" \
-    LUME_FAKENET_WALLET_ENDPOINT="$WALLET_GRPC_ADDR" \
-    LUME_FAKENET_WALLET_ADDRESS="$MINING_PKH" \
-    LUME_FAKENET_COINBASE_TIMELOCK_MIN=1 \
+    VESL_FAKENET_CHAIN_ENDPOINT="http://$NOCKCHAIN_GRPC_ADDR" \
+    VESL_FAKENET_WALLET_ENDPOINT="$WALLET_GRPC_ADDR" \
+    VESL_FAKENET_WALLET_ADDRESS="$MINING_PKH" \
+    VESL_FAKENET_COINBASE_TIMELOCK_MIN=1 \
     cargo test --test e2e_fakenet -- --ignored --nocapture 2>&1
 
     log "E2E fakenet tests complete."

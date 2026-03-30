@@ -1,0 +1,56 @@
+[package]
+name = "hull"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "hull"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hull"
+path = "src/main.rs"
+
+# Nockchain monorepo pin: 505c3ea (2026-03-25)
+# All nockchain crate paths resolve relative to $NOCK_HOME = ../../nockchain
+
+[dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
+axum = "0.8"
+
+# --- Vesl extracted crates ---
+nock-noun-rs = { path = "../crates/nock-noun-rs" }
+nockchain-tip5-rs = { path = "../crates/nockchain-tip5-rs", features = ["serde"] }
+
+# --- Nockchain crates (pinned to monorepo at ../../nockchain) ---
+nockvm = { path = "../../nockchain/crates/nockvm/rust/nockvm" }
+nockvm_macros = { path = "../../nockchain/crates/nockvm/rust/nockvm_macros" }
+nockapp = { path = "../../nockchain/crates/nockapp", default-features = false }
+nockapp-grpc = { path = "../../nockchain/crates/nockapp-grpc" }
+nockchain-types = { path = "../../nockchain/crates/nockchain-types" }
+nockchain-math = { path = "../../nockchain/crates/nockchain-math" }
+ibig = { path = "../../nockchain/crates/nockvm/rust/ibig" }
+noun-serde = { path = "../../nockchain/crates/noun-serde" }
+zkvm-jetpack = { path = "../../nockchain/crates/zkvm-jetpack" }
+bytes = "1"
+getrandom = "0.3"
+
+# --- Vesl kernel crate (embeds compiled vesl.jam) ---
+kernels-vesl = { path = "../kernels/vesl" }
+
+[dev-dependencies]
+tempfile = "3"
+tower = "0.5"
+http-body-util = "0.1"
+kernels-open-wallet = { path = "../../nockchain/crates/kernels/wallet" }
+
+[features]
+# Gate wallet kernel integration tests behind a feature flag.
+# Boot takes ~5-10s for the 20MB wal.jam kernel.
+_wallet_kernel_tests = []

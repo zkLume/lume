@@ -1,1 +1,0 @@
-../../protocol/lib/lume-stark-verifier.hoon

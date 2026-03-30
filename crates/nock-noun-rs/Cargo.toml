@@ -1,0 +1,10 @@
+[package]
+name = "nock-noun-rs"
+version = "0.1.0"
+edition = "2024"
+description = "Ergonomic Nock noun construction from Rust — NockStack helpers, cord/tag builders, jam/cue utilities"
+license = "MIT"
+
+[dependencies]
+nockvm = { path = "../../../nockchain/crates/nockvm/rust/nockvm" }
+nockapp = { path = "../../../nockchain/crates/nockapp", default-features = false }

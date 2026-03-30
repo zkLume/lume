@@ -1,12 +1,12 @@
 # Build artifacts
-vessel/target/
-kernels/lume/target/
+hull/target/
+kernels/vesl/target/
 out.jam
 *.jam.bak
 
 # Runtime state
 .fakenet/
-vessel/.data.lume/
+hull/.data.vesl/
 *.pid
 
 # Internal
@@ -33,6 +33,7 @@ hoon/trivial.hoon
 
 # Debug scaffolds
 setup_lab.sh
-protocol/lib/lume-debug.hoon
-protocol/lib/lume-identity.hoon
+protocol/lib/vesl-debug.hoon
+protocol/lib/vesl-identity.hoon
 protocol/tests/sanity.hoon
+chunk_store.json

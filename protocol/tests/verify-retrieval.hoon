@@ -4,8 +4,8 @@
 ::  asserts correct inclusion proof and rejects tampered data.
 ::  Compilation success = all assertions passed.
 ::
-/-  *lume
-/+  *lume-logic
+/-  *vesl
+/+  *vesl-logic
 ::
 ::  Build 4-leaf Merkle tree — enterprise scenario chunks
 ::

@@ -1,1 +1,0 @@
-../../protocol/lib/lume-verifier.hoon
