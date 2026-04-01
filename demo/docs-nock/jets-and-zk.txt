@@ -1,0 +1,11 @@
+Jets, Determinism, and the ZK Argument
+
+A jet is a native (Rust/C) implementation of a Nock function that produces the same result as interpreting the Nock. The runtime pattern-matches on known Nock formulas at core creation and swaps in the fast path. If the jet disagrees with the Nock, the jet is wrong — Nock is the specification.
+
+This has a profound consequence for zero-knowledge proofs. When you prove execution of a Nock program in a ZKVM, the prover can use jets internally as long as the verifier checks against the Nock specification. The proof attests that a specific Nock formula, given a specific subject, produced a specific result. The prover's optimizations are invisible to the verifier.
+
+Nockchain uses this property for settlement. The tip5 hash function is implemented as both a Hoon library (the specification) and a Rust jet (the fast path). Merkle proofs computed in Rust are verified in Hoon. The Hoon verification is what gets proven in the ZKVM.
+
+The tip5 hash was chosen specifically for ZK-friendliness. It operates over the Goldilocks field (p = 2^64 - 2^32 + 1) and requires roughly 300 R1CS constraints per hash, compared to ~30,000 for SHA-256. This makes Merkle proof verification inside a STARK circuit practical rather than theoretical.
+
+The hash produces a 5-element digest where each element is a Goldilocks field element (u64 < p). When encoded as Nock nouns, each limb becomes an atom. The full digest is a list of 5 atoms, packed in little-endian 7-byte chunks when crossing the Rust/Nock boundary.

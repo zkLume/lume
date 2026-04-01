@@ -1,0 +1,19 @@
+Nock: A Minimal Combinator Calculus
+
+Nock is a Turing-complete function that maps a cell [subject formula] to a noun. The entire spec fits on a napkin. There are 12 opcodes (0-11), no variable names, no types at the instruction level. Everything is a binary tree of unsigned integers.
+
+Key opcodes:
+  0 — slot (tree addressing): *[a 0 b] -> /[b a]
+  1 — constant: *[a 1 b] -> b
+  2 — compose: *[a 2 b c] -> *[*[a b] *[a c]]
+  3 — cell test: *[a 3 b] -> ?*[a b]
+  4 — increment: *[a 4 b] -> +*[a b]
+  5 — equality: *[a 5 b c] -> =[*[a b] *[a c]]
+  6 — if-then-else: *[a 6 b c d] -> *[a 2 [0 1] 2 [1 c d] [1 0] 2 [1 2 3] [1 0] 4 4 b]
+  7 — compose: *[a 7 b c] -> *[a 2 b 1 c]
+  8 — push: *[a 8 b c] -> *[[*[a b] a] c]
+  9 — invoke: *[a 9 b c] -> *[*[a c] 2 [0 1] 0 b]
+  10 — edit: *[a 10 [b c] d] -> #[b *[a c] *[a d]]
+  11 — hint: *[a 11 [b c] d] -> *[a d] (with side effect hint)
+
+The beauty of Nock is that opcodes 6-11 are all macros — they reduce to combinations of 0-5. You could implement Nock with only six primitive operations. The higher opcodes exist purely for jet matching: the runtime recognizes known computations and replaces them with native code.

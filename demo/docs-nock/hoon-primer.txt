@@ -1,0 +1,16 @@
+Hoon: A Typed Functional Language That Compiles to Nock
+
+Hoon is what you actually write when you build on Nock. It's a statically typed, purely functional language with a rune-based syntax. Every Hoon expression compiles to a Nock formula. There are no side effects in the language itself — effects happen through the runtime.
+
+Runes are two-character ASCII digraphs. The major families:
+  |  (bar) — cores (objects/modules): |=  bartis (gate/function), |%  barcen (core)
+  +  (lus) — arms (methods): ++  luslus (arm definition)
+  =  (tis) — mutations: =.  tisdot (change subject), =/  tisfas (define face)
+  ?  (wut) — conditionals: ?:  wutcol (if-then-else), ?~  wutsig (null check)
+  %  (cen) — calls: %~  censig (call with sample), %-  cenhep (function call)
+  ^  (ket) — casts: ^-  kethep (type annotation)
+  !  (zap) — wild: !>  zapgar (type of), !!  zapzap (crash)
+
+The Two-Space Law: every rune is followed by exactly TWO spaces. |=  a=@ not |= a=@. This is not optional. Your code will not parse otherwise. The compiler is not being difficult — it uses whitespace structurally to determine argument boundaries.
+
+Cores are Hoon's universal abstraction. A gate (function) is a core with one arm ($) and a sample (argument). A door is a core with a sample. A library is a core with named arms. Everything is cores all the way down. Even numbers are cores when you call methods on them.
