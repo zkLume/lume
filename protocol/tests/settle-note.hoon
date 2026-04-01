@@ -1,12 +1,12 @@
 ::  tests/settle-note.hoon: Settlement integration test
 ::
 ::  End-to-end test of the Nockchain settlement state transition.
-::  Simulates a Hedge Fund RAG query settled via Lume Note #42.
+::  Simulates a Hedge Fund RAG query settled via Vesl Note #42.
 ::  Verifies valid manifests settle and tampered ones revert.
 ::  Compilation success = all assertions passed.
 ::
-/-  *lume
-/+  *lume-logic
+/-  *vesl
+/+  *vesl-logic
 ::
 ::  Build 4-leaf Merkle tree — hedge fund Q3 data vault
 ::
@@ -24,7 +24,7 @@
 =/  h23  (hash-pair h2 h3)
 =/  root  (hash-pair h01 h23)
 ::
-::  Chunks matching sur/lume.hoon types
+::  Chunks matching sur/vesl.hoon types
 ::
 =/  chunk0  [id=0 dat='Q3 revenue: $47M, up 12% YoY']
 =/  chunk1  [id=1 dat='Risk exposure: 15% in emerging markets']
@@ -52,16 +52,16 @@
 =/  valid-mani
   [query=query results=results prompt=valid-prompt output='Based on your Q3 data...']
 ::
-::  Create %pending Lume Note #42, Vessel #7
+::  Create %pending Vesl Note #42, Hull #7
 ::
-=/  pending-note  [id=42 vessel=7 root=root state=[%pending ~]]
+=/  pending-note  [id=42 hull=7 root=root state=[%pending ~]]
 ::
 ::  Test 1: Valid manifest → note transitions to %settled
 ::
 =/  settled  (settle-note pending-note valid-mani root)
 ?>  =(state.settled [%settled ~])
 ?>  =(id.settled 42)
-?>  =(vessel.settled 7)
+?>  =(hull.settled 7)
 ::
 ::  Test 2: Tampered manifest → settle-note crashes (!! revert)
 ::  mule catches the expected crash safely

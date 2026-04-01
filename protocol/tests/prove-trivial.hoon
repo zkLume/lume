@@ -8,7 +8,7 @@
 ::  fink:fock traces the execution, generate-proof builds the STARK,
 ::  and the proof result is not an error.
 ::
-/+  *lume-prover
+/+  *vesl-prover
 ::
 ::  Run the prover on [42 [0 1]] — simplest possible Nock computation
 ::

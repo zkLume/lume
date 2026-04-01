@@ -1,52 +1,73 @@
-# Lume
+# Vesl
 
-Lume is a NockApp. It ingests data into a tip5 Merkle tree, retrieves chunks against queries with inclusion proofs, verifies prompt integrity in a Hoon kernel, and generates STARK proofs that the Nock VM executed the settlement correctly. The root is the only thing that touches the chain.
+Verified RAG on Nockchain.
+
+Ingest data into a tip5 Merkle tree. Retrieve chunks with inclusion proofs. Verify prompt integrity in a Hoon kernel. Settle on-chain. The root is the only thing that touches the chain.
+
+
+## Demo
+
+```bash
+# Local pipeline — no chain required, runs in ~30 seconds
+./scripts/demo.sh --no-chain
+
+# Full pipeline with live fakenet settlement
+./scripts/demo.sh
+```
+
+The demo ingests documents, retrieves against a query, verifies in the Hoon kernel, and settles. `--no-chain` skips chain interaction so you can see the pipeline without booting a fakenet.
 
 
 ## Structure
 
 ```
 protocol/                 Hoon — the trust anchor
-  sur/lume.hoon             types
-  lib/lume-logic.hoon       verification gates (tip5 Merkle, prompt integrity)
-  lib/lume-kernel.hoon      NockApp kernel (poke/peek/load)
-  lib/lume-prover.hoon      STARK proof generation
-  lib/lume-verifier.hoon    STARK proof verification
+  sur/vesl.hoon             types
+  lib/vesl-logic.hoon       verification gates (tip5 Merkle, prompt integrity)
+  lib/vesl-kernel.hoon      NockApp kernel (poke/peek/load)
+  lib/vesl-prover.hoon      STARK proof generation
+  lib/vesl-verifier.hoon    STARK proof verification
   tests/                    8 compile-time assertion tests
 
-vessel/                   Rust — the off-chain pipeline
-  src/merkle.rs             tip5 Merkle tree (cross-VM aligned with Hoon)
-  src/chain.rs              on-chain settlement encoding (Strategy A)
-  src/api.rs                HTTP: /ingest, /query, /status
+hull/                   Rust — the off-chain pipeline
+  src/merkle.rs             tip5 Merkle tree (cross-runtime aligned with Hoon)
+  src/chain.rs              on-chain settlement encoding
+  src/api.rs                HTTP: /ingest, /query, /prove, /status
   src/ingest.rs             document chunking
   src/llm.rs                LLM integration (Ollama, trait-based)
   tests/                    pipeline, adversarial, fakenet
 
-kernels/lume/             kernel compilation crate
-assets/lume.jam           compiled kernel
-scripts/                  fakenet harness
+crates/                   Standalone crates (usable without Vesl)
+  nock-noun-rs/             Nock noun construction from Rust
+  nockchain-tip5-rs/        tip5 Merkle tree + hash functions
+
+kernels/vesl/             kernel compilation crate
+assets/vesl.jam           compiled kernel
+scripts/                  demo + fakenet harness
 ```
+
 
 ## Build
 
 Requires the [nockchain](https://github.com/zorp-corp/nockchain) monorepo cloned and built, with `hoonc` and `nockchain` in your PATH.
 
 ```bash
-git clone https://github.com/sobchek/lume.git
-cd lume
+git clone https://github.com/zkVesl/vesl.git
+cd vesl
 
 export NOCK_HOME=~/path/to/nockchain
 ./scripts/setup-hoon-tree.sh
 
-cd vessel && cargo build
+cd hull && cargo build
 ```
 
-Rust toolchain: `nightly-2025-11-26` (pinned in `vessel/rust-toolchain`).
+Rust toolchain: `nightly-2025-11-26` (pinned in `hull/rust-toolchain`).
+
 
 ## Test
 
 ```bash
-cargo test --lib                    # 79 unit tests
+cargo test --lib                    # 88 unit tests
 cargo test --test e2e_pipeline      # kernel boot + settlement
 cargo test --test e2e_adversarial   # 7 kernel attack vectors, 5 HTTP vectors
 cargo test                          # all of the above
@@ -65,30 +86,47 @@ hoonc --arbitrary protocol/tests/red-team.hoon hoon/
 hoonc --arbitrary protocol/tests/prove-verify.hoon hoon/
 ```
 
-## Compile the kernel
+
+## Standalone Crates
+
+These work independently of Vesl. Any NockApp can use them.
+
+**[nock-noun-rs](crates/nock-noun-rs/)** — Build Nock nouns from Rust without reading 57K lines of wallet code. NockStack helpers, cord/tag/loobean builders, jam/cue round-trips. Handles the footguns (loobeans are inverted, cords aren't strings, lists are null-terminated) so you don't have to.
+
+**[nockchain-tip5-rs](crates/nockchain-tip5-rs/)** — Standalone tip5 Merkle tree. ~100 arithmetic constraints per hash vs ~30,000 for SHA-256 — 100x cheaper in ZK circuits. Cross-runtime aligned: Rust output is byte-identical to Hoon.
+
+**[vesl-test](protocol/lib/vesl-test.hoon)** — Compile-time Hoon testing. Eight assertion arms, zero configuration, no test runner. If it builds, it passes.
+
+
+## Compile the Kernel
 
 ```bash
-hoonc --new protocol/lib/lume-kernel.hoon hoon/
-cp out.jam assets/lume.jam
+hoonc --new protocol/lib/vesl-kernel.hoon hoon/
+cp out.jam assets/vesl.jam
 ```
 
 Use `--new` after modifying Hoon source. hoonc caches aggressively.
 
+
 ## HTTP API
 
 ```bash
-cd vessel && cargo run
+cd hull && cargo run
 ```
 
 | Endpoint | Method | |
 |----------|--------|-|
 | `/ingest` | POST | documents in, Merkle tree out |
 | `/query` | POST | natural language query, triggers retrieval + settlement |
+| `/prove` | POST | like `/query` but adds STARK proof (needs `--stack-size large`) |
 | `/status` | GET | tree state, settled notes, root |
 | `/health` | GET | liveness |
 
-Expects Ollama at `localhost:11434` for inference.
+Expects Ollama at `localhost:11434` for inference. For STARK proving, boot with `--stack-size large` or larger.
+
 
 ## License
 
 [MIT](LICENSE)
+
+~

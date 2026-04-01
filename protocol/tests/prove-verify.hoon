@@ -1,11 +1,11 @@
 ::  tests/prove-verify.hoon: STARK proof generation + full math verification
 ::
-::  End-to-end: generate a STARK proof with lume-prover, then verify
+::  End-to-end: generate a STARK proof with vesl-prover, then verify
 ::  it with full STARK math (FRI, linking-checks, constraint satisfaction,
-::  DEEP polynomial checks) via lume-verifier.
+::  DEEP polynomial checks) via vesl-verifier.
 ::
-/+  *lume-prover
-/+  lume-verifier
+/+  *vesl-prover
+/+  vesl-verifier
 ::
 ::  1. Generate STARK proof of [42 [0 1]] — identity computation
 ::
@@ -22,15 +22,15 @@
 =/  prf=proof  p.result
 ::
 ::  structural re-execution check
-?>  (verify-structure:lume-verifier prf 42 [0 1])
+?>  (verify-structure:vesl-verifier prf 42 [0 1])
 ::
 ::  3. Full STARK math verification (Level 2)
 ::
-::  verify:lume-verifier calls the forked verifier which accepts
+::  verify:vesl-verifier calls the forked verifier which accepts
 ::  [s f] directly instead of deriving from puzzle-nock.
 ::  This exercises the full FRI + linking-checks + constraint
 ::  polynomial + DEEP codeword verification pipeline.
 ::
-?>  (verify:lume-verifier prf ~ 0 42 [0 1])
+?>  (verify:vesl-verifier prf ~ 0 42 [0 1])
 ::
 %pass

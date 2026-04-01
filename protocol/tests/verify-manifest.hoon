@@ -4,8 +4,8 @@
 ::  Verifies that prompt integrity checking catches injection attacks.
 ::  Compilation success = all assertions passed.
 ::
-/-  *lume
-/+  *lume-logic
+/-  *vesl
+/+  *vesl-logic
 ::
 ::  Build 4-leaf Merkle tree — hedge fund Q3 data vault
 ::
@@ -23,7 +23,7 @@
 =/  h23  (hash-pair h2 h3)
 =/  root  (hash-pair h01 h23)
 ::
-::  Chunk definitions matching sur/lume.hoon types
+::  Chunk definitions matching sur/vesl.hoon types
 ::
 =/  chunk0  [id=0 dat='Q3 revenue: $47M, up 12% YoY']
 =/  chunk1  [id=1 dat='Risk exposure: 15% in emerging markets']
