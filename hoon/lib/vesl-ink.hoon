@@ -1,0 +1,1 @@
+../../protocol/lib/vesl-ink.hoon

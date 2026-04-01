@@ -1,0 +1,21 @@
+[package]
+name = "vesl-mantle"
+version = "0.1.0"
+edition = "2024"
+description = "High-level Vesl SDK — Ink/Grip/Beak/Kraken facades over the extracted crate stack"
+license = "MIT"
+
+[dependencies]
+# Sibling extracted crates
+nockchain-tip5-rs = { path = "../nockchain-tip5-rs", features = ["serde"] }
+nock-noun-rs = { path = "../nock-noun-rs" }
+nockchain-client-rs = { path = "../nockchain-client-rs" }
+
+# Nockchain monorepo crates (for Beak/Kraken kernel boot)
+nockapp = { path = "../../../nockchain/crates/nockapp", default-features = false }
+nockvm = { path = "../../../nockchain/crates/nockvm/rust/nockvm" }
+
+# Standard deps
+anyhow = "1.0"
+tokio = { version = "1", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
