@@ -51,31 +51,27 @@ hoon/                     symlink tree (setup-hoon-tree.sh creates links to $NOC
 ```
 
 
-## Build
+## Quick Start
 
-Requires the [nockchain](https://github.com/zorp-corp/nockchain) monorepo cloned and built at a sibling path (`../../nockchain` from `hull/`), with `hoonc` and `nockchain` in your PATH.
+Prerequisites: [nockchain](https://github.com/zorp-corp/nockchain) monorepo cloned and built at a sibling path, with `hoonc` and `nockchain` in your PATH. Rust nightly `2025-11-26` (pinned in `hull/rust-toolchain`).
 
 ```bash
 git clone https://github.com/zkVesl/vesl.git
 cd vesl
-
-# Point at the nockchain monorepo and create hoon/ symlinks
-export NOCK_HOME=~/path/to/nockchain
-./scripts/setup-hoon-tree.sh
-
-cd hull && cargo build --release
+cp vesl.toml.example vesl.toml     # edit nock_home if your layout differs
+make setup                          # create hoon symlinks
+make build                          # compile hull
+make demo-local                     # run the pipeline (no chain needed)
 ```
 
-Rust toolchain: `nightly-2025-11-26` (pinned in `hull/rust-toolchain`). The Cargo dependencies expect the nockchain monorepo at `../../nockchain` relative to `hull/` — adjust paths in `hull/Cargo.toml` if your layout differs.
+Run `make help` for all available targets. Configuration lives in `vesl.toml` — see `vesl.toml.example` for options. Environment variables (`NOCK_HOME`, `OLLAMA_URL`, `API_PORT`) override config file values.
 
 
 ## Test
 
 ```bash
-cargo test --lib                    # 88 unit tests
-cargo test --test e2e_pipeline      # kernel boot + settlement
-cargo test --test e2e_adversarial   # 12 adversarial tests (kernel + HTTP)
-cargo test                          # all of the above
+make test-unit                      # 88 unit tests
+make test                           # all tests (unit + e2e)
 ```
 
 Fakenet (live local chain):

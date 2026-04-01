@@ -1,0 +1,13 @@
+# Vesl configuration
+# Copy to vesl.toml and adjust paths for your setup.
+# Environment variables override these values.
+
+# Path to the nockchain monorepo (required for `make setup` and `make kernel`)
+# Default matches the standard sibling layout: ~/projects/nockchain/{vesl,nockchain}
+nock_home = "../../nockchain"
+
+# Ollama endpoint (optional — demo uses stub provider if unset)
+# ollama_url = "http://localhost:11434"
+
+# Hull HTTP API port (default: 3000)
+# api_port = 3000

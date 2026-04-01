@@ -33,6 +33,7 @@ hoon/trivial.hoon
 # Environment overrides
 .env
 .env.local
+vesl.toml
 
 # Debug scaffolds
 setup_lab.sh
