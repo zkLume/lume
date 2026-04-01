@@ -1,0 +1,8 @@
+[package]
+name = "kernels-ink"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Vesl Ink kernel JAM — commitment only (1.5MB)"
+
+[dependencies]

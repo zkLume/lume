@@ -1,0 +1,18 @@
+[package]
+name = "{{project_name}}"
+version = "0.1.0"
+edition = "2021"
+authors = ["{{author_name}} <{{author_email}}>"]
+description = "Data registry NockApp — hash-based data commitments"
+
+[[bin]]
+name = "{{project_name}}"
+path = "src/main.rs"
+
+[dependencies]
+nockapp = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+nockvm = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+nockvm_macros = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+
+tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"
