@@ -25,7 +25,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -183,6 +183,7 @@ pub fn router(state: SharedState) -> Router {
         .route("/ingest", post(ingest_handler))
         .route("/query", post(query_handler))
         .route("/prove", post(prove_handler))
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10 MB
         .with_state(state)
 }
 
@@ -310,6 +311,18 @@ async fn query_handler(
                 error: "no relevant chunks found for query".into(),
             }),
         ));
+    }
+
+    // Validate retriever indices before use
+    for h in &hits {
+        if h.chunk_index >= st.chunks.len() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorBody {
+                    error: format!("retriever returned invalid index {}", h.chunk_index),
+                }),
+            ));
+        }
     }
 
     let retrieval_infos: Vec<RetrievalInfo> = hits
@@ -507,6 +520,18 @@ async fn prove_handler(
                 error: "no relevant chunks found for query".into(),
             }),
         ));
+    }
+
+    // Validate retriever indices before use
+    for h in &hits {
+        if h.chunk_index >= st.chunks.len() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorBody {
+                    error: format!("retriever returned invalid index {}", h.chunk_index),
+                }),
+            ));
+        }
     }
 
     let retrieval_infos: Vec<RetrievalInfo> = hits
@@ -748,10 +773,10 @@ async fn prove_handler(
 // ---------------------------------------------------------------------------
 
 /// Start the HTTP API server on the given port.
-pub async fn serve(state: SharedState, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn serve(state: SharedState, port: u16, bind_addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     let app = router(state);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
-    println!("Vesl Hull API listening on http://0.0.0.0:{port}");
+    let listener = tokio::net::TcpListener::bind(format!("{bind_addr}:{port}")).await?;
+    println!("Vesl Hull API listening on http://{bind_addr}:{port}");
     println!("  POST /ingest  — upload documents");
     println!("  POST /query   — retrieve + infer + settle");
     println!("  POST /prove   — retrieve + infer + settle + STARK proof (needs --stack-size large)");

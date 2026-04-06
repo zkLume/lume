@@ -69,6 +69,11 @@ struct Cli {
     #[arg(long = "port", default_value = "3000")]
     port: u16,
 
+    /// Bind address for the HTTP API server [default: 127.0.0.1].
+    /// Use 0.0.0.0 to expose to the network.
+    #[arg(long = "bind-addr", default_value = "127.0.0.1")]
+    bind_addr: String,
+
     /// Settlement mode: local (default), fakenet, or dumbnet.
     #[arg(long = "settlement-mode", value_enum)]
     settlement_mode: Option<SettlementMode>,
@@ -109,8 +114,14 @@ struct Cli {
 
     /// Seed phrase for dumbnet key derivation.
     /// Alternatively set VESL_SEED_PHRASE env var.
+    /// WARNING: visible in `ps` output. Prefer --seed-phrase-file.
     #[arg(long = "seed-phrase")]
     seed_phrase: Option<String>,
+
+    /// Path to a file containing the seed phrase (one line, trimmed).
+    /// Safer than --seed-phrase since the value never appears in ps output.
+    #[arg(long = "seed-phrase-file")]
+    seed_phrase_file: Option<PathBuf>,
 
     /// Wallet subcommand (requires --features dumbnet).
     #[cfg(feature = "dumbnet")]
@@ -234,7 +245,8 @@ fn handle_wallet(action: WalletAction) -> Result<(), Box<dyn std::error::Error>>
                     .map_err(|e| format!("failed to generate entropy: {e}"))?;
                 // Convert entropy to a Belt key by hashing
                 let hex_str = hex::encode(&entropy);
-                let sk = signing::key_from_seed_phrase(&hex_str);
+                let sk = signing::key_from_seed_phrase(&hex_str)
+                    .map_err(|e| format!("key derivation failed: {e}"))?;
                 let pk = signing::derive_pubkey(&sk);
                 let pkh = signing::pubkey_hash(&pk);
                 println!("Keypair generated.");
@@ -244,7 +256,8 @@ fn handle_wallet(action: WalletAction) -> Result<(), Box<dyn std::error::Error>>
                 println!("Save the entropy string. Pass it as --seed-phrase or");
                 println!("set VESL_SEED_PHRASE to use this key with dumbnet mode.");
             } else if let Some(phrase) = seed_phrase {
-                let sk = signing::key_from_seed_phrase(&phrase);
+                let sk = signing::key_from_seed_phrase(&phrase)
+                    .map_err(|e| format!("key derivation failed: {e}"))?;
                 let pk = signing::derive_pubkey(&sk);
                 let pkh = signing::pubkey_hash(&pk);
                 println!("Key imported from seed phrase.");
@@ -257,7 +270,8 @@ fn handle_wallet(action: WalletAction) -> Result<(), Box<dyn std::error::Error>>
         WalletAction::Status => {
             match std::env::var("VESL_SEED_PHRASE") {
                 Ok(phrase) => {
-                    let sk = signing::key_from_seed_phrase(&phrase);
+                    let sk = signing::key_from_seed_phrase(&phrase)
+                        .map_err(|e| format!("key derivation failed: {e}"))?;
                     let pk = signing::derive_pubkey(&sk);
                     let pkh = signing::pubkey_hash(&pk);
                     println!("  PKH (base58): {}", pkh.to_base58());
@@ -286,6 +300,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Load config from vesl.toml ---
     let toml_cfg = config::load_config(&cli.config);
 
+    // --- Resolve seed phrase: file > CLI arg > env ---
+    let seed_phrase = if let Some(ref path) = cli.seed_phrase_file {
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read seed phrase file {}: {e}", path.display()))?;
+        Some(contents.trim().to_string())
+    } else {
+        cli.seed_phrase.clone()
+    };
+
     // --- Resolve settlement config ---
     let settlement = SettlementConfig::resolve(
         cli.settlement_mode,
@@ -294,7 +317,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli.tx_fee,
         cli.coinbase_timelock_min,
         cli.accept_timeout,
-        cli.seed_phrase.clone(),
+        seed_phrase,
         &toml_cfg,
     );
 
@@ -371,7 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             settlement: settlement.clone(),
             stack_size: stack_size.clone(),
         }));
-        return api::serve(state, cli.port).await;
+        return api::serve(state, cli.port, &cli.bind_addr).await;
     }
 
     // =====================================================================

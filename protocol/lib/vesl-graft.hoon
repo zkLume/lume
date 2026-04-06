@@ -66,6 +66,11 @@
     ::  %vesl-register — store hull root
     ::
       %vesl-register
+    ::  Guard: reject re-registration (hull already has a root)
+    ::
+    ?:  (~(has by registered.state) hull.cause)
+      :_  state
+      ~[[%vesl-error 'vesl-graft: hull already registered']]
     =/  new-reg  (~(put by registered.state) hull.cause root.cause)
     :_  state(registered new-reg)
     ~[[%vesl-registered hull.cause root.cause]]
@@ -81,6 +86,17 @@
     ?.  (~(has by registered.state) hull.note.args)
       :_  state
       ~[[%vesl-error 'vesl-graft: root not registered']]
+    ::  Guard: expected root must match registered root
+    ::
+    ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
+      :_  state
+      ~[[%vesl-error 'vesl-graft: root mismatch']]
+    ::  Guard: note header root must match expected root
+    ::  (prevents settlement effect from reporting an unverified root)
+    ::
+    ?.  =(root.note.args expected-root.args)
+      :_  state
+      ~[[%vesl-error 'vesl-graft: note root does not match expected root']]
     ::  Guard: replay protection
     ::
     ?:  (~(has in settled.state) id.note.args)
@@ -94,7 +110,8 @@
     ~[[%vesl-settled note=result]]
     ::
     ::  %vesl-verify — pure verification, no state transition
-    ::    Returns [%vesl-verified %.y] or [%vesl-verified %.n]
+    ::    Returns [%vesl-verified %.y] or [%vesl-verified %.n].
+    ::    Crashes (nack) on malformed data — hull handles as failure.
     ::
       %vesl-verify
     =/  raw=*  (cue payload.cause)
@@ -102,6 +119,11 @@
     ::  Check registration
     ::
     ?.  (~(has by registered.state) hull.note.args)
+      :_  state
+      ~[[%vesl-verified %.n]]
+    ::  Guard: expected root must match registered root
+    ::
+    ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
       :_  state
       ~[[%vesl-verified %.n]]
     ::  Verify manifest against expected root

@@ -68,6 +68,11 @@
       ::  %register — store hull root
       ::
         %register
+      ::  Guard: reject re-registration (hull already has a root)
+      ::
+      ?:  (~(has by registered.state) hull.u.act)
+        ~>  %slog.[3 'vigil: hull already registered']
+        [~ state]
       =/  new-reg  (~(put by registered.state) hull.u.act root.u.act)
       :_  state(registered new-reg)
       ^-  (list effect)
@@ -83,6 +88,12 @@
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
+      ::  Guard: expected root must match registered root
+      ::
+      ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
         :_  state
         ^-  (list effect)
         ~[[%verified %.n]]

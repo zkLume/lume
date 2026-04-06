@@ -78,6 +78,11 @@
       ::  %register — store hull root
       ::
         %register
+      ::  Guard: reject re-registration (hull already has a root)
+      ::
+      ?:  (~(has by registered.state) hull.u.act)
+        ~>  %slog.[3 'anchor: hull already registered']
+        [~ state]
       =/  new-reg  (~(put by registered.state) hull.u.act root.u.act)
       :_  state(registered new-reg)
       ^-  (list effect)
@@ -93,6 +98,11 @@
       ::
       ?.  (~(has by registered.state) hull.note.args)
         ~>  %slog.[3 'anchor: root not registered']
+        [~ state]
+      ::  Guard: expected root must match registered root
+      ::
+      ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
+        ~>  %slog.[3 'anchor: root mismatch']
         [~ state]
       ::  Guard: reject duplicate note IDs (replay protection)
       ::
@@ -111,6 +121,12 @@
       =/  raw=*  (cue payload.u.act)
       =/  args=settlement-payload  ;;(settlement-payload raw)
       ?.  (~(has by registered.state) hull.note.args)
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
+      ::  Guard: expected root must match registered root
+      ::
+      ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
         :_  state
         ^-  (list effect)
         ~[[%verified %.n]]

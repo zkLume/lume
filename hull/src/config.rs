@@ -146,7 +146,8 @@ impl SettlementConfig {
                 // Resolve signing key: CLI seed phrase > env var > None
                 let seed = cli_seed_phrase
                     .or_else(|| std::env::var("VESL_SEED_PHRASE").ok());
-                let sk = seed.map(|s| signing::key_from_seed_phrase(&s));
+                let sk = seed.map(|s| signing::key_from_seed_phrase(&s)
+                    .expect("invalid seed phrase — produced zero scalar"));
 
                 Self {
                     mode: SettlementMode::Dumbnet,

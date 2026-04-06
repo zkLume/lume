@@ -62,6 +62,11 @@
       ::  %register — store hull root
       ::
         %register
+      ::  Guard: reject re-registration (hull already has a root)
+      ::
+      ?:  (~(has by registered.state) hull.u.act)
+        ~>  %slog.[3 'sigil: hull already registered']
+        [~ state]
       =/  new-reg  (~(put by registered.state) hull.u.act root.u.act)
       :_  state(registered new-reg)
       ^-  (list effect)

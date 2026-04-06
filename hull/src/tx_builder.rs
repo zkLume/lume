@@ -106,7 +106,8 @@ pub async fn build_settlement_tx(
 
     // 7. Sign the sig-hash
     let msg_belts = sig_hash.to_array().map(Belt);
-    let signature = signing::sign(&params.signing_key, &msg_belts);
+    let signature = signing::sign(&params.signing_key, &msg_belts)
+        .map_err(|e| anyhow::anyhow!("signing failed: {e}"))?;
 
     // 8. Build witness — proves authorization to spend the INPUT UTXO
     let lock_merkle_proof = LockMerkleProofFull {

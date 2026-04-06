@@ -12,11 +12,40 @@
 //!
 //! Verification uses the existing jet in zkvm-jetpack (verify_affine).
 
+use std::fmt;
+
 use ibig::UBig;
 use nockchain_math::belt::Belt;
 use nockchain_math::crypto::cheetah::{ch_scal_big, trunc_g_order, A_GEN, G_ORDER};
 use nockchain_math::tip5::hash::hash_varlen;
 use nockchain_types::tx_engine::common::{Hash, SchnorrPubkey, SchnorrSignature};
+
+// ---------------------------------------------------------------------------
+// Error type
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+pub enum SigningError {
+    InvalidSecretKey,
+    ZeroNonce,
+    ZeroChallenge,
+    ZeroSignature,
+    ZeroSeedScalar,
+}
+
+impl fmt::Display for SigningError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidSecretKey => write!(f, "secret key must be in (0, g_order)"),
+            Self::ZeroNonce => write!(f, "deterministic nonce was zero"),
+            Self::ZeroChallenge => write!(f, "challenge was zero"),
+            Self::ZeroSignature => write!(f, "signature was zero"),
+            Self::ZeroSeedScalar => write!(f, "seed phrase produced zero scalar — use a different phrase"),
+        }
+    }
+}
+
+impl std::error::Error for SigningError {}
 
 // ---------------------------------------------------------------------------
 // Demo signing key — deterministic key for fakenet testing
@@ -80,12 +109,11 @@ pub fn pubkey_hash(pk: &SchnorrPubkey) -> Hash {
 /// each stored as 8 × 32-bit Belt chunks.
 ///
 /// Compatible with Hoon's `sign:affine:belt-schnorr:cheetah`.
-pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> SchnorrSignature {
+pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> Result<SchnorrSignature, SigningError> {
     let sk_big = belts8_to_ubig(sk);
-    assert!(
-        sk_big > UBig::from(0u64) && sk_big < *G_ORDER,
-        "secret key must be in (0, g_order)"
-    );
+    if sk_big == UBig::from(0u64) || sk_big >= *G_ORDER {
+        return Err(SigningError::InvalidSecretKey);
+    }
 
     // 1. Derive public key: pk = sk * G
     let pubkey = ch_scal_big(&sk_big, &A_GEN).expect("valid scalar");
@@ -98,7 +126,9 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> SchnorrSignature {
     nonce_input.extend_from_slice(sk);
     let nonce_hash = hash_varlen(&mut nonce_input);
     let nonce = trunc_g_order(&nonce_hash);
-    assert!(nonce > UBig::from(0u64), "nonce must be nonzero");
+    if nonce == UBig::from(0u64) {
+        return Err(SigningError::ZeroNonce);
+    }
 
     // 3. R = nonce * G
     let r_point = ch_scal_big(&nonce, &A_GEN).expect("valid nonce");
@@ -112,17 +142,21 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> SchnorrSignature {
     chal_input.extend_from_slice(message);
     let chal_hash = hash_varlen(&mut chal_input);
     let chal = trunc_g_order(&chal_hash);
-    assert!(chal > UBig::from(0u64), "challenge must be nonzero");
+    if chal == UBig::from(0u64) {
+        return Err(SigningError::ZeroChallenge);
+    }
 
     // 5. Signature: sig = (nonce + chal * sk) mod g_order
     let sig = (&nonce + &chal * &sk_big) % &*G_ORDER;
-    assert!(sig > UBig::from(0u64), "signature must be nonzero");
+    if sig == UBig::from(0u64) {
+        return Err(SigningError::ZeroSignature);
+    }
 
     // 6. Encode as 8 × 32-bit Belt chunks (Hoon's t8 representation)
-    SchnorrSignature {
+    Ok(SchnorrSignature {
         chal: ubig_to_belts8(&chal),
         sig: ubig_to_belts8(&sig),
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +167,7 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> SchnorrSignature {
 ///
 /// Hashes the phrase bytes through tip5's `hash_varlen`, then truncates
 /// to a valid scalar in (0, g_order) and packs into 8 × 32-bit Belts.
-pub fn key_from_seed_phrase(phrase: &str) -> [Belt; 8] {
+pub fn key_from_seed_phrase(phrase: &str) -> Result<[Belt; 8], SigningError> {
     let bytes = phrase.as_bytes();
     // Pack bytes into Belt values (8 bytes per Belt, little-endian)
     let mut belts: Vec<Belt> = Vec::with_capacity((bytes.len() + 7) / 8);
@@ -146,8 +180,10 @@ pub fn key_from_seed_phrase(phrase: &str) -> [Belt; 8] {
     }
     let hash = hash_varlen(&mut belts);
     let scalar = trunc_g_order(&hash);
-    assert!(scalar > UBig::from(0u64), "seed phrase produced zero scalar — use a different phrase");
-    ubig_to_belts8(&scalar)
+    if scalar == UBig::from(0u64) {
+        return Err(SigningError::ZeroSeedScalar);
+    }
+    Ok(ubig_to_belts8(&scalar))
 }
 
 /// Check whether a signing key matches the hardcoded demo key.
@@ -217,7 +253,7 @@ mod tests {
         let message = [Belt(1), Belt(2), Belt(3), Belt(4), Belt(5)];
 
         // Sign
-        let sig = sign(&sk, &message);
+        let sig = sign(&sk, &message).expect("signing should succeed");
 
         // Verify using the same algorithm as verify_affine in cheetah_jets.rs
         let pubkey = derive_pubkey(&sk);
@@ -298,8 +334,8 @@ mod tests {
         let msg1 = [Belt(1), Belt(0), Belt(0), Belt(0), Belt(0)];
         let msg2 = [Belt(2), Belt(0), Belt(0), Belt(0), Belt(0)];
 
-        let sig1 = sign(&sk, &msg1);
-        let sig2 = sign(&sk, &msg2);
+        let sig1 = sign(&sk, &msg1).expect("signing should succeed");
+        let sig2 = sign(&sk, &msg2).expect("signing should succeed");
 
         assert_ne!(sig1.chal, sig2.chal);
         assert_ne!(sig1.sig, sig2.sig);

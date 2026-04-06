@@ -59,6 +59,7 @@
 ++  verify-chunk
   |=  [chunk=@ proof=(list [hash=@ side=?]) expected-root=@]
   ^-  ?
+  ?:  (gth (lent proof) 64)  %.n
   =/  cur=@  (hash-leaf chunk)
   |-
   ?~  proof
