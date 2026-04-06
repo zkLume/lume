@@ -21,7 +21,7 @@ API_PORT ?= $(shell grep -s '^api_port' vesl.toml 2>/dev/null | sed 's/.*= *\([0
 # ---------------------------------------------------------------------------
 
 help:
-	@echo "Vesl — verified RAG on Nockchain"
+	@echo "Vesl — verifiable RAG on Nockchain"
 	@echo ""
 	@echo "Quick start:"
 	@echo "  cp vesl.toml.example vesl.toml   # edit nock_home if needed"

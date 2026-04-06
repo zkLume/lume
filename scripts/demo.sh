@@ -140,7 +140,7 @@ trap cleanup EXIT
 # Prerequisite checks
 # ---------------------------------------------------------------------------
 
-banner "Vesl: Verified RAG on Nockchain"
+banner "Vesl: Verifiable RAG on Nockchain"
 
 step "0" "Checking prerequisites..."
 

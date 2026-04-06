@@ -86,7 +86,7 @@ pub use nockapp::noun::slab::NounSlab;
 
 ## Who made this
 
-Extracted from [Vesl](https://github.com/zkVesl/vesl) — verified RAG
+Extracted from [Vesl](https://github.com/zkVesl/vesl) — verifiable RAG
 on Nockchain. Built by people who misuse `NounSlab` in production and
 have the scars to prove it.
 

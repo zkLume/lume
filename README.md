@@ -1,6 +1,6 @@
 # Vesl
 
-Verified RAG on Nockchain.
+Verifiable RAG on Nockchain.
 
 Ingest data into a tip5 Merkle tree. Retrieve chunks with inclusion proofs. Verify prompt integrity in a Hoon kernel. Settle on-chain. The root is the only thing that touches the chain.
 
@@ -27,7 +27,7 @@ protocol/                 Hoon — the trust anchor
   lib/vesl-kernel.hoon      NockApp kernel (poke/peek/load)
   lib/vesl-prover.hoon      STARK proof generation
   lib/vesl-verifier.hoon    STARK proof verification
-  tests/                    13 compile-time assertion tests
+  tests/                    14 compile-time assertion tests
 
 hull/                   Rust — the off-chain pipeline
   src/merkle.rs             tip5 Merkle tree (cross-runtime aligned with Hoon)
@@ -37,7 +37,7 @@ hull/                   Rust — the off-chain pipeline
   src/signing.rs            Schnorr signing
   src/ingest.rs             document chunking
   src/llm.rs                LLM integration (Ollama, trait-based)
-  tests/                    pipeline, adversarial, fakenet (20 E2E tests)
+  tests/                    pipeline, adversarial, prover, fakenet (37 E2E tests)
 
 crates/                   Standalone crates (usable without Vesl)
   nock-noun-rs/             Nock noun construction from Rust
@@ -70,22 +70,81 @@ Run `make help` for all available targets. Configuration lives in `vesl.toml` �
 ## Test
 
 ```bash
-make test-unit                      # 88 unit tests
+make test-unit                      # 99 unit tests
 make test                           # all tests (unit + e2e)
 ```
 
 Fakenet (live local chain):
 
 ```bash
-./scripts/fakenet-harness.sh run    # boot nodes, run 20 tests, tear down
+./scripts/fakenet-harness.sh run    # boot nodes, run 20 integration tests, tear down
 ```
 
 Hoon tests are compile-time assertions — build success means pass:
 
 ```bash
-hoonc --arbitrary protocol/tests/red-team.hoon hoon/
-hoonc --arbitrary protocol/tests/prove-verify.hoon hoon/
+hoonc --new protocol/tests/red-team.hoon hoon/
+hoonc --new protocol/tests/prove-verify.hoon hoon/
 ```
+
+
+## Settlement Modes
+
+Vesl supports three settlement modes. Set via `--settlement-mode`, `VESL_SETTLEMENT_MODE`, or `settlement_mode` in `vesl.toml`.
+
+| Mode | What happens | Chain required |
+|------|-------------|----------------|
+| `local` | Kernel verifies, no chain interaction. Default. | No |
+| `fakenet` | Full pipeline — sign, build tx, submit to a local nockchain fakenet. | Yes (local) |
+| `dumbnet` | Same as fakenet but uses a real seed phrase for key derivation. | Yes (live) |
+
+Precedence: CLI flag > environment variable > `vesl.toml` > mode defaults. Passing `--chain-endpoint` or `--submit` without an explicit mode infers `fakenet`.
+
+
+## Fakenet Settlement Walkthrough
+
+Run the full pipeline: ingest documents, retrieve against a query, verify in the Hoon kernel, build a settlement transaction, sign it, and submit to a local chain.
+
+```bash
+# 1. Build everything
+make setup                              # hoon symlinks
+make build                              # compile hull (release)
+
+# 2. Boot a local fakenet (hub + miner, background)
+./scripts/fakenet-harness.sh start
+
+# 3. Run the demo with live settlement
+./scripts/demo.sh --fakenet
+
+# 4. Or drive it manually via the HTTP API
+cd hull && cargo run -- --new --serve --settlement-mode fakenet
+
+# In another terminal:
+curl -X POST http://127.0.0.1:3000/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"documents": ["Q3 revenue: $47M, up 12% YoY"]}'
+
+curl -X POST http://127.0.0.1:3000/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "Summarize Q3 financial position", "top_k": 2}'
+
+# /query triggers: retrieve → LLM → manifest → kernel verify → sign → settle
+# The response includes the settlement result and transaction ID.
+
+# 5. Run the full E2E test suite against the running fakenet
+./scripts/fakenet-harness.sh test
+
+# 6. Tear down
+./scripts/fakenet-harness.sh stop
+```
+
+Or do it all in one shot:
+
+```bash
+./scripts/fakenet-harness.sh run        # boot → test → teardown
+```
+
+The harness mines to a demo signing key so the hull can spend coinbase UTXOs without wallet setup.
 
 
 ## Standalone Crates
@@ -124,6 +183,8 @@ cd hull && cargo run -- --new --serve
 | `/health` | GET | liveness |
 
 Use `--new` on first boot (or after kernel recompilation) to avoid stale NockApp state. For STARK proving, boot with `--stack-size large`. For real LLM inference, pass `--ollama-url http://localhost:11434`. Works with remote Ollama instances too, e.g. RunPod: `--ollama-url https://{pod-id}-11434.proxy.runpod.net`.
+
+The server binds to `127.0.0.1` by default. To expose to the network, pass `--bind-addr 0.0.0.0`. For dumbnet mode, pass the signing key via `--seed-phrase-file <path>` (reads one line, trimmed) instead of `--seed-phrase` to keep the value out of `ps` output.
 
 
 ## License

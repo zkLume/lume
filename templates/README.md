@@ -20,7 +20,7 @@ A name-to-hash registry. Register data (stores its SHA-256 hash), then verify la
 
 ### 3. [settle-report](./settle-report/) — Settlement Pattern
 
-The commit-verify-settle lifecycle with three guards: commitment must exist, no duplicate settlements, hash must match. This is the simplified version of what Vesl does for verified RAG — minus the Merkle proofs and STARK proving, but the same bones.
+The commit-verify-settle lifecycle with three guards: commitment must exist, no duplicate settlements, hash must match. This is the simplified version of what Vesl does for verifiable RAG — minus the Merkle proofs and STARK proving, but the same bones.
 
 **What you learn:** Multi-guard verification, replay protection, rejection effects with reason codes, the settlement pattern that Vesl and other on-chain NockApps use.
 

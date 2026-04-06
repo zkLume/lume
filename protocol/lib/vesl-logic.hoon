@@ -1,4 +1,4 @@
-::  lib/vesl-logic.hoon: Merkle, manifest & settlement for Verified RAG
+::  lib/vesl-logic.hoon: Merkle, manifest & settlement for Verifiable RAG
 ::
 ::  Pure functions for Tier 3/4 (Nock-Prover & Settlement) operations.
 ::  Hash primitive: tip5 (algebraic, STARK-native) via zeke.hoon.
