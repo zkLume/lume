@@ -2,9 +2,11 @@
 ::
 ::  Tests the Graft lifecycle: register → peek → settle → replay guard.
 ::  Uses the hedge fund scenario from test-entrypoint.hoon.
+::  Passes a RAG verification gate to the generic vesl-poke.
 ::  Compilation success = all assertions passed.
 ::
 /-  *vesl
+/+  *vesl-merkle
 /+  *vesl-logic
 /+  *vesl-graft
 ::
@@ -40,6 +42,14 @@
 ::
 =/  pending-note  [id=42 hull=7 root=root state=[%pending ~]]
 ::
+::  RAG verification gate — wraps verify-manifest for vesl-poke
+::
+=/  rag-gate=verify-gate
+  |=  [data=* expected-root=@]
+  ^-  ?
+  =/  mani  ;;(manifest data)
+  (verify-manifest mani expected-root)
+::
 ::  ============================================
 ::  TEST 1: Fresh state is empty
 ::  ============================================
@@ -57,7 +67,7 @@
 ::  TEST 2: Register a hull root
 ::  ============================================
 ::
-=/  reg-result  (vesl-poke st [%vesl-register hull=7 root=root])
+=/  reg-result  (vesl-poke st [%vesl-register hull=7 root=root] rag-gate)
 =/  reg-effects  -.reg-result
 =/  st  +.reg-result
 ::
@@ -87,7 +97,7 @@
 ::  ============================================
 ::
 =/  verify-payload=@  (jam [pending-note valid-mani root])
-=/  ver-result  (vesl-poke st [%vesl-verify payload=verify-payload])
+=/  ver-result  (vesl-poke st [%vesl-verify payload=verify-payload] rag-gate)
 =/  ver-effects  -.ver-result
 =/  st  +.ver-result
 ::
@@ -107,7 +117,7 @@
 ::  ============================================
 ::
 =/  settle-payload=@  (jam [pending-note valid-mani root])
-=/  set-result  (vesl-poke st [%vesl-settle payload=settle-payload])
+=/  set-result  (vesl-poke st [%vesl-settle payload=settle-payload] rag-gate)
 =/  set-effects  -.set-result
 =/  st  +.set-result
 ::
@@ -130,7 +140,7 @@
 ::  TEST 5: Replay protection — re-settling same note fails
 ::  ============================================
 ::
-=/  replay-result  (vesl-poke st [%vesl-settle payload=settle-payload])
+=/  replay-result  (vesl-poke st [%vesl-settle payload=settle-payload] rag-gate)
 =/  replay-effects  -.replay-result
 ::
 ::  Should get a %vesl-error, not a %vesl-settled
@@ -146,7 +156,7 @@
 ::
 =/  bad-note  [id=99 hull=999 root=root state=[%pending ~]]
 =/  bad-payload=@  (jam [bad-note valid-mani root])
-=/  unreg-result  (vesl-poke st [%vesl-settle payload=bad-payload])
+=/  unreg-result  (vesl-poke st [%vesl-settle payload=bad-payload] rag-gate)
 =/  unreg-effects  -.unreg-result
 ::
 ?>  ?=(^ unreg-effects)

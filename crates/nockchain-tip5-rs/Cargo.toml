@@ -7,6 +7,7 @@ license = "MIT"
 
 [dependencies]
 nockchain-math = { path = "../../../nockchain/crates/nockchain-math" }
+subtle = "2"
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]

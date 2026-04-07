@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=hoon/app/app.hoon");
     println!("cargo:rerun-if-changed=hoon/lib/vesl-graft.hoon");
     println!("cargo:rerun-if-changed=hoon/lib/vesl-logic.hoon");
+    println!("cargo:rerun-if-changed=hoon/lib/vesl-merkle.hoon");
     println!("cargo:rerun-if-changed=hoon/sur/vesl.hoon");
 
     let out_dir = env::var("OUT_DIR").unwrap();

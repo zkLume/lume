@@ -76,7 +76,7 @@ mod tests {
         let root = sigil.commit(&chunks);
 
         for (i, chunk) in chunks.iter().enumerate() {
-            let proof = ink.proof(i);
+            let proof = sigil.proof(i);
             assert!(verify_proof(chunk, &proof, &root), "failed at leaf {i}");
         }
     }
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn tampered_data_fails_verification() {
         let mut sigil = Sigil::new();
-        let root = ink.commit(&[b"real data"]);
+        let root = sigil.commit(&[b"real data"]);
         let proof = sigil.proof(0);
 
         assert!(!verify_proof(b"fake data", &proof, &root));

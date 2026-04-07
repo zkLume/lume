@@ -1,0 +1,22 @@
+[package]
+name = "{{project_name}}"
+version = "0.1.0"
+edition = "2021"
+authors = ["{{author_name}} <{{author_email}}>"]
+description = "NockApp with custom (non-RAG) verification gate — proves the Graft is domain-agnostic"
+
+[[bin]]
+name = "{{project_name}}"
+path = "src/main.rs"
+
+[dependencies]
+nockapp = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+nockvm = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+nockvm_macros = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+
+# Vesl — Sigil for commitment, no RAG dependencies needed
+vesl-mantle = { path = "../../crates/vesl-mantle" }
+nock-noun-rs = { path = "../../crates/nock-noun-rs" }
+
+tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"

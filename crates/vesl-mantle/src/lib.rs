@@ -28,4 +28,6 @@ pub use types::{
     Tip5Hash, ProofNode, TIP5_ZERO, MerkleTree,
     ChainClient, ChainConfig, WalletClient, WalletConfig,
     format_tip5, hash_leaf, hash_pair, verify_proof,
+    GraftPayload, IntentVerifier, NounSlab,
 };
+pub use anchor::RagVerifier;

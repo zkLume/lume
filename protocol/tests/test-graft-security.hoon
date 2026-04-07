@@ -7,6 +7,7 @@
 ::  Compilation success = all assertions passed.
 ::
 /-  *vesl
+/+  *vesl-merkle
 /+  *vesl-logic
 /+  *vesl-graft
 ::
@@ -50,6 +51,14 @@
 =/  valid-mani
   [query=query results=results prompt=valid-prompt output='Based on your Q3 data...' page=0]
 ::
+::  RAG verification gate — wraps verify-manifest for vesl-poke
+::
+=/  rag-gate=verify-gate
+  |=  [data=* expected-root=@]
+  ^-  ?
+  =/  mani  ;;(manifest data)
+  (verify-manifest mani expected-root)
+::
 ::  ============================================
 ::  TEST 1: Registration overwrite protection
 ::  ============================================
@@ -57,12 +66,12 @@
 ::  Register hull=7 with root-a
 ::
 =/  st=vesl-state  [registered=*(map @ @) settled=*(set @)]
-=/  reg-result  (vesl-poke st [%vesl-register hull=7 root=root-a])
+=/  reg-result  (vesl-poke st [%vesl-register hull=7 root=root-a] rag-gate)
 =/  st  +.reg-result
 ::
 ::  Attempt to re-register hull=7 with root-b — must be rejected
 ::
-=/  overwrite-result  (vesl-poke st [%vesl-register hull=7 root=root-b])
+=/  overwrite-result  (vesl-poke st [%vesl-register hull=7 root=root-b] rag-gate)
 =/  overwrite-effects  -.overwrite-result
 =/  overwrite-state  +.overwrite-result
 ::
@@ -84,7 +93,7 @@
 ::
 =/  pending-note  [id=42 hull=7 root=root-a state=[%pending ~]]
 =/  bad-root-payload=@  (jam [pending-note valid-mani root-b])
-=/  mismatch-result  (vesl-poke st [%vesl-settle payload=bad-root-payload])
+=/  mismatch-result  (vesl-poke st [%vesl-settle payload=bad-root-payload] rag-gate)
 =/  mismatch-effects  -.mismatch-result
 ::
 ::  Must get %vesl-error for root mismatch, not a settlement
@@ -96,7 +105,7 @@
 ::  TEST 3: Verify with mismatched root — must reject
 ::  ============================================
 ::
-=/  ver-mismatch-result  (vesl-poke st [%vesl-verify payload=bad-root-payload])
+=/  ver-mismatch-result  (vesl-poke st [%vesl-verify payload=bad-root-payload] rag-gate)
 =/  ver-mismatch-effects  -.ver-mismatch-result
 ::
 ::  Must get %vesl-verified %.n (not %.y)
@@ -112,7 +121,7 @@
 ::  Build payload with correct root-a
 ::
 =/  good-payload=@  (jam [pending-note valid-mani root-a])
-=/  good-result  (vesl-poke st [%vesl-settle payload=good-payload])
+=/  good-result  (vesl-poke st [%vesl-settle payload=good-payload] rag-gate)
 =/  good-effects  -.good-result
 =/  st  +.good-result
 ::
@@ -134,12 +143,12 @@
 ::
 ::  Step 1: Legitimate registration
 ::
-=/  legit-reg  (vesl-poke st2 [%vesl-register hull=7 root=root-a])
+=/  legit-reg  (vesl-poke st2 [%vesl-register hull=7 root=root-a] rag-gate)
 =/  st2  +.legit-reg
 ::
 ::  Step 2: Attacker tries to overwrite — must fail
 ::
-=/  attack-reg  (vesl-poke st2 [%vesl-register hull=7 root=root-b])
+=/  attack-reg  (vesl-poke st2 [%vesl-register hull=7 root=root-b] rag-gate)
 =/  attack-effects  -.attack-reg
 ?>  ?=(^ attack-effects)
 ?>  ?=(%vesl-error -.i.attack-effects)
@@ -148,7 +157,7 @@
 ::
 =/  attack-note  [id=1 hull=7 root=root-b state=[%pending ~]]
 =/  attack-payload=@  (jam [attack-note valid-mani root-b])
-=/  attack-settle  (vesl-poke st2 [%vesl-settle payload=attack-payload])
+=/  attack-settle  (vesl-poke st2 [%vesl-settle payload=attack-payload] rag-gate)
 =/  settle-effects  -.attack-settle
 ?>  ?=(^ settle-effects)
 ?>  ?=(%vesl-error -.i.settle-effects)

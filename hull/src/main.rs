@@ -309,6 +309,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli.seed_phrase.clone()
     };
 
+    if cli.seed_phrase.is_some() && cli.seed_phrase_file.is_none() {
+        eprintln!("WARNING: --seed-phrase is visible in `ps` output. Use --seed-phrase-file instead.");
+    }
+
     // --- Resolve settlement config ---
     let settlement = SettlementConfig::resolve(
         cli.settlement_mode,
@@ -382,18 +386,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             (Vec::new(), None)
         };
 
-        let state = Arc::new(Mutex::new(api::AppState {
-            app,
-            chunks,
-            tree,
-            hull_id: 7,
-            top_k: cli.top_k,
+        let state = Arc::new(api::ServerState {
+            inner: Mutex::new(api::AppState {
+                app,
+                chunks,
+                tree,
+                hull_id: 7,
+                top_k: cli.top_k,
+                retriever: Box::new(retrieve::KeywordRetriever),
+                note_counter: api::load_note_counter(&cli.output_dir),
+                settlement: settlement.clone(),
+                stack_size: stack_size.clone(),
+                output_dir: cli.output_dir.clone(),
+            }),
             llm: provider,
-            retriever: Box::new(retrieve::KeywordRetriever),
-            note_counter: 0,
-            settlement: settlement.clone(),
-            stack_size: stack_size.clone(),
-        }));
+        });
         return api::serve(state, cli.port, &cli.bind_addr).await;
     }
 
@@ -541,7 +548,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         println!("\n[9] Connecting to Nockchain node at {endpoint}...");
         println!("    Mode: {}", settlement.mode);
-        let chain_config = settlement.chain_config().unwrap();
+        let chain_config = settlement.chain_config()
+            .ok_or("chain config unavailable despite endpoint being set")?;
         match chain::ChainClient::connect(chain_config).await {
             Ok(mut client) => {
                 println!("    Settlement: {settlement_data}");
@@ -549,9 +557,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // --- [9a] Find spendable UTXO ---
                 let pkh = signing::pubkey_hash(&signing::derive_pubkey(sk));
                 let pkh_b58 = pkh.to_base58();
-                println!("    Signer PKH: {}", &pkh_b58[..16]);
+                let pkh_preview = if pkh_b58.len() >= 16 { &pkh_b58[..16] } else { &pkh_b58 };
+                println!("    Signer PKH: {}", pkh_preview);
                 if signing::is_demo_key(sk) {
                     println!("    Key: demo (fakenet)");
+                    if settlement.mode != config::SettlementMode::Fakenet {
+                        eprintln!("WARNING: demo signing key in use outside fakenet mode — do not use in production");
+                    }
                 } else {
                     println!("    Key: custom (dumbnet)");
                 }
@@ -590,7 +602,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ),
                         input_note_hash: utxo.last_name.clone(),
                         input_amount: utxo.amount,
-                        is_coinbase: true,
+                        is_coinbase: true, // V-L02: assumes mining-reward UTXOs only
                         coinbase_timelock_min: settlement.coinbase_timelock_min,
                         source_hash: nockchain_types::tx_engine::common::Hash::from_limbs(&[
                             0, 0, 0, 0, 0,

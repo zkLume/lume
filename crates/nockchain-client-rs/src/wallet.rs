@@ -107,7 +107,8 @@ impl WalletClient {
     }
 
     fn next_pid(&mut self) -> i32 {
-        self.pid_counter += 1;
+        self.pid_counter = self.pid_counter.wrapping_add(1);
+        if self.pid_counter < 0 { self.pid_counter = 1; }
         self.pid_counter
     }
 

@@ -2806,6 +2806,9 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tower",
+ "tower-http",
+ "vesl-mantle",
+ "zeroize",
  "zkvm-jetpack",
 ]
 
@@ -3741,6 +3744,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nockchain-client-rs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nockapp",
+ "nockapp-grpc",
+ "nockchain-tip5-rs",
+ "nockchain-types",
+ "nockvm",
+ "noun-serde",
+ "tokio",
+]
+
+[[package]]
 name = "nockchain-math"
 version = "0.1.0"
 dependencies = [
@@ -3768,6 +3785,7 @@ version = "0.1.0"
 dependencies = [
  "nockchain-math",
  "serde",
+ "subtle",
 ]
 
 [[package]]
@@ -6654,6 +6672,21 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vesl-mantle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nock-noun-rs",
+ "nockapp",
+ "nockchain-client-rs",
+ "nockchain-tip5-rs",
+ "nockvm",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "virtue"

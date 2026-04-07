@@ -23,11 +23,15 @@ anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json"] }
 axum = "0.8"
+tower-http = { version = "0.6", features = ["limit"] }
+tower = { version = "0.5", features = ["limit", "buffer"] }
 toml = "0.8"
+zeroize = "1"
 
 # --- Vesl extracted crates ---
 nock-noun-rs = { path = "../crates/nock-noun-rs" }
 nockchain-tip5-rs = { path = "../crates/nockchain-tip5-rs", features = ["serde"] }
+vesl-mantle = { path = "../crates/vesl-mantle" }
 
 # --- Nockchain crates (pinned to monorepo at ../../nockchain) ---
 nockvm = { path = "../../nockchain/crates/nockvm/rust/nockvm" }

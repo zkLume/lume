@@ -220,6 +220,9 @@ fn u64_to_noun(slab: &mut NounSlab<NockJammer>, val: u64) -> Noun {
         D(val)
     } else {
         let bytes = val.to_le_bytes();
+        // SAFETY: bytes is a valid le-byte representation of a u64.
+        // new_raw_bytes_ref copies into the slab allocator;
+        // normalize_as_atom produces a canonical atom.
         unsafe {
             let mut indirect = IndirectAtom::new_raw_bytes_ref(slab, &bytes);
             indirect.normalize_as_atom().as_noun()
@@ -237,6 +240,8 @@ fn find_u64_entry(data: &NoteData, key: &str) -> Result<u64> {
     let mut slab: NounSlab<NockJammer> = NounSlab::new();
     slab.cue_into(entry.blob.clone())
         .context("failed to cue NoteDataEntry blob")?;
+    // SAFETY: root was set by cue_into on the line above. The NounSlab
+    // owns the allocation; dereferencing is valid while the slab is live.
     let noun = unsafe { *slab.root() };
     let atom = noun
         .as_atom()
@@ -254,6 +259,8 @@ fn find_hash_entry(data: &NoteData, key: &str) -> Result<Tip5Hash> {
     let mut slab: NounSlab<NockJammer> = NounSlab::new();
     slab.cue_into(entry.blob.clone())
         .context("failed to cue NoteDataEntry blob")?;
+    // SAFETY: root was set by cue_into on the line above. The NounSlab
+    // owns the allocation; dereferencing is valid while the slab is live.
     let mut noun = unsafe { *slab.root() };
     let mut limbs = [0u64; 5];
     for (i, limb) in limbs.iter_mut().enumerate() {

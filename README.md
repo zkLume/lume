@@ -149,7 +149,7 @@ The harness mines to a demo signing key so the hull can spend coinbase UTXOs wit
 
 ## Standalone Crates
 
-These work independently of Vesl. Any NockApp can use them.
+These work independently of Vesl. Any NockApp can use them. Built on primitives from the [nockchain](https://github.com/zorp-corp/nockchain) monorepo — packaged as standalone libraries with documentation.
 
 **[nock-noun-rs](crates/nock-noun-rs/)** — Build Nock nouns from Rust without reading 57K lines of wallet code. NockStack helpers, cord/tag/loobean builders, jam/cue round-trips. Handles the footguns (loobeans are inverted, cords aren't strings, lists are null-terminated) so you don't have to.
 

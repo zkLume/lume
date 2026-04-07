@@ -23,18 +23,20 @@
 //! | GET    | `/status` | Return current state (root, chunk count, notes)   |
 //! | GET    | `/health` | Liveness check                                    |
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use nockapp::kernel::boot::NockStackSize;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::wire::{SystemWire, Wire};
 use nockapp::NockApp;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::chain;
 use crate::config::SettlementConfig;
@@ -60,7 +62,6 @@ pub struct AppState {
     pub tree: Option<MerkleTree>,
     pub hull_id: u64,
     pub top_k: usize,
-    pub llm: Box<dyn LlmProvider>,
     pub retriever: Box<dyn Retriever + Send + Sync>,
     /// Count of settled notes (incremented per successful /query).
     pub note_counter: u64,
@@ -68,9 +69,38 @@ pub struct AppState {
     pub settlement: SettlementConfig,
     /// Nock stack size the kernel was booted with.
     pub stack_size: NockStackSize,
+    /// Output directory for persistence files (note_counter, etc.).
+    pub output_dir: PathBuf,
 }
 
-pub type SharedState = Arc<Mutex<AppState>>;
+/// Wrapper that holds the mutex-protected state and the LLM provider separately.
+/// LLM inference can take 30+ seconds; keeping it outside the mutex prevents
+/// blocking /health, /status, and other handlers during inference (V-003b).
+pub struct ServerState {
+    pub inner: Mutex<AppState>,
+    pub llm: Box<dyn LlmProvider>,
+}
+
+pub type SharedState = Arc<ServerState>;
+
+// ---------------------------------------------------------------------------
+// Note counter persistence
+// ---------------------------------------------------------------------------
+
+const NOTE_COUNTER_FILE: &str = ".hull_note_counter";
+
+pub fn load_note_counter(output_dir: &std::path::Path) -> u64 {
+    let path = output_dir.join(NOTE_COUNTER_FILE);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn save_note_counter(output_dir: &std::path::Path, counter: u64) {
+    let path = output_dir.join(NOTE_COUNTER_FILE);
+    let _ = std::fs::write(&path, counter.to_string());
+}
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -172,6 +202,53 @@ struct ErrorBody {
 }
 
 // ---------------------------------------------------------------------------
+// Input limits (V-C04)
+// ---------------------------------------------------------------------------
+
+/// Maximum documents per /ingest request.
+const MAX_DOCUMENTS: usize = 500;
+/// Maximum size of a single document in bytes (1 MB).
+const MAX_DOCUMENT_BYTES: usize = 1_000_000;
+/// Maximum total chunks after paragraph splitting.
+const MAX_CHUNKS: usize = 50_000;
+/// Maximum top_k for retrieval queries.
+const MAX_TOP_K: usize = 100;
+
+// ---------------------------------------------------------------------------
+// Auth middleware (V-C01)
+// ---------------------------------------------------------------------------
+
+/// API key authentication middleware.
+///
+/// Checks `Authorization: Bearer <key>` against VESL_API_KEY env var.
+/// If VESL_API_KEY is not set, all requests are allowed (dev mode).
+/// /health is always exempt (liveness probes).
+async fn check_api_key(
+    req: axum::extract::Request,
+    next: middleware::Next,
+) -> Result<axum::response::Response, StatusCode> {
+    if req.uri().path() == "/health" {
+        return Ok(next.run(req).await);
+    }
+
+    let expected = match std::env::var("VESL_API_KEY") {
+        Ok(k) if !k.is_empty() => k,
+        _ => return Ok(next.run(req).await),
+    };
+
+    let provided = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "));
+
+    match provided {
+        Some(token) if token == expected => Ok(next.run(req).await),
+        _ => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -183,7 +260,16 @@ pub fn router(state: SharedState) -> Router {
         .route("/ingest", post(ingest_handler))
         .route("/query", post(query_handler))
         .route("/prove", post(prove_handler))
-        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10 MB
+        .layer(
+            tower::ServiceBuilder::new()
+                .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
+                    StatusCode::TOO_MANY_REQUESTS
+                }))
+                .buffer(256)
+                .rate_limit(200, std::time::Duration::from_secs(60)),
+        )
+        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024)) // 10 MB hard limit (V-003a)
+        .layer(middleware::from_fn(check_api_key)) // V-C01: API key auth
         .with_state(state)
 }
 
@@ -198,7 +284,7 @@ async fn health() -> Json<HealthResponse> {
 }
 
 async fn status(State(state): State<SharedState>) -> Json<StatusResponse> {
-    let st = state.lock().await;
+    let st = state.inner.lock().await;
     let merkle_root = st.tree.as_ref().map(|t| crate::merkle::format_tip5(&t.root()));
     Json(StatusResponse {
         has_tree: st.tree.is_some(),
@@ -221,6 +307,26 @@ async fn ingest_handler(
                 error: "documents array must not be empty".into(),
             }),
         ));
+    }
+
+    // V-C04: Enforce input bounds
+    if req.documents.len() > MAX_DOCUMENTS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorBody {
+                error: format!("too many documents ({}, max {})", req.documents.len(), MAX_DOCUMENTS),
+            }),
+        ));
+    }
+    for (i, doc) in req.documents.iter().enumerate() {
+        if doc.len() > MAX_DOCUMENT_BYTES {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorBody {
+                    error: format!("document {} too large ({} bytes, max {})", i, doc.len(), MAX_DOCUMENT_BYTES),
+                }),
+            ));
+        }
     }
 
     // Split each document into paragraph chunks
@@ -252,6 +358,16 @@ async fn ingest_handler(
         ));
     }
 
+    // V-C04: Cap total chunk count to prevent OOM during tree build
+    if chunks.len() > MAX_CHUNKS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorBody {
+                error: format!("too many chunks ({}, max {})", chunks.len(), MAX_CHUNKS),
+            }),
+        ));
+    }
+
     let leaf_data: Vec<&[u8]> = chunks.iter().map(|c| c.dat.as_bytes()).collect();
     let tree = MerkleTree::build(&leaf_data);
     let root = tree.root();
@@ -259,20 +375,31 @@ async fn ingest_handler(
     let chunk_count = chunks.len();
 
     // Register root with kernel
-    let mut st = state.lock().await;
+    let mut st = state.inner.lock().await;
     let register_poke = noun_builder::build_register_poke(st.hull_id, &root);
-    let _effects = st
-        .app
-        .poke(SystemWire.to_wire(), register_poke)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorBody {
-                    error: format!("kernel register poke failed: {e}"),
-                }),
-            )
-        })?;
+    let _effects = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        st.app.poke(SystemWire.to_wire(), register_poke),
+    )
+    .await
+    .map_err(|_| {
+        eprintln!("kernel register poke timed out");
+        (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(ErrorBody {
+                error: "kernel operation timed out".into(),
+            }),
+        )
+    })?
+    .map_err(|e| {
+        eprintln!("kernel register poke failed: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorBody {
+                error: "internal error".into(),
+            }),
+        )
+    })?;
 
     st.chunks = chunks;
     st.tree = Some(tree);
@@ -288,83 +415,103 @@ async fn query_handler(
     State(state): State<SharedState>,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<QueryResponse>, (StatusCode, Json<ErrorBody>)> {
-    let mut st = state.lock().await;
+    // --- Phase 1: read state under lock, build retrievals + prompt ---
+    let (retrievals, retrieval_infos, prompt, prompt_bytes, root, hull_id, hits_len) = {
+        let st = state.inner.lock().await;
 
-    let tree = st.tree.as_ref().ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorBody {
-                error: "no documents ingested — call POST /ingest first".into(),
-            }),
-        )
-    })?;
-
-    let root = tree.root();
-    let k = req.top_k.unwrap_or(st.top_k);
-
-    // Retrieve
-    let hits = st.retriever.retrieve(&req.query, &st.chunks, k);
-    if hits.is_empty() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorBody {
-                error: "no relevant chunks found for query".into(),
-            }),
-        ));
-    }
-
-    // Validate retriever indices before use
-    for h in &hits {
-        if h.chunk_index >= st.chunks.len() {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
+        let tree = st.tree.as_ref().ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
                 Json(ErrorBody {
-                    error: format!("retriever returned invalid index {}", h.chunk_index),
+                    error: "no documents ingested — call POST /ingest first".into(),
+                }),
+            )
+        })?;
+
+        let root = tree.root();
+        let k = req.top_k.unwrap_or(st.top_k).min(MAX_TOP_K); // V-C04
+
+        // Retrieve
+        let hits = st.retriever.retrieve(&req.query, &st.chunks, k);
+        if hits.is_empty() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorBody {
+                    error: "no relevant chunks found for query".into(),
                 }),
             ));
         }
-    }
 
-    let retrieval_infos: Vec<RetrievalInfo> = hits
-        .iter()
-        .map(|h| {
-            let dat = &st.chunks[h.chunk_index].dat;
-            RetrievalInfo {
-                chunk_id: st.chunks[h.chunk_index].id,
-                score: h.score,
-                preview: if dat.len() > 80 {
-                    format!("{}...", &dat[..80])
-                } else {
-                    dat.clone()
-                },
+        // Validate retriever indices before use
+        for h in &hits {
+            if h.chunk_index >= st.chunks.len() {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorBody {
+                        error: format!("retriever returned invalid index {}", h.chunk_index),
+                    }),
+                ));
             }
-        })
-        .collect();
+        }
 
-    let retrieved_chunks: Vec<&Chunk> =
-        hits.iter().map(|h| &st.chunks[h.chunk_index]).collect();
+        let retrieval_infos: Vec<RetrievalInfo> = hits
+            .iter()
+            .map(|h| {
+                let dat = &st.chunks[h.chunk_index].dat;
+                RetrievalInfo {
+                    chunk_id: st.chunks[h.chunk_index].id,
+                    score: h.score,
+                    preview: if dat.len() > 80 {
+                        format!("{}...", &dat[..80])
+                    } else {
+                        dat.clone()
+                    },
+                }
+            })
+            .collect();
 
-    let retrievals: Vec<Retrieval> = hits
-        .iter()
-        .map(|h| Retrieval {
-            chunk: st.chunks[h.chunk_index].clone(),
-            proof: tree.proof(h.chunk_index),
-            score: h.score_fixed(),
-        })
-        .collect();
+        let retrieved_chunks: Vec<&Chunk> =
+            hits.iter().map(|h| &st.chunks[h.chunk_index]).collect();
 
-    // Build prompt + call LLM
-    let prompt = llm::build_prompt(&req.query, &retrieved_chunks);
-    let prompt_bytes = prompt.len();
+        let retrievals: Vec<Retrieval> = hits
+            .iter()
+            .map(|h| Retrieval {
+                chunk: st.chunks[h.chunk_index].clone(),
+                proof: tree.proof(h.chunk_index),
+                score: h.score_fixed(),
+            })
+            .collect();
 
-    let output = st.llm.generate(&prompt).await.map_err(|e| {
+        let prompt = llm::build_prompt(&req.query, &retrieved_chunks);
+        let prompt_bytes = prompt.len();
+        let hits_len = hits.len();
+
+        (retrievals, retrieval_infos, prompt, prompt_bytes, root, st.hull_id, hits_len)
+    }; // lock dropped here
+
+    // --- Phase 2: LLM inference without lock (V-003b) ---
+    let output = state.llm.generate(&prompt).await.map_err(|e| {
+        eprintln!("LLM inference failed: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorBody {
-                error: format!("LLM inference failed: {e}"),
+                error: "inference failed".into(),
             }),
         )
     })?;
+
+    // --- Phase 3: settle under lock ---
+    let mut st = state.inner.lock().await;
+
+    // TOCTOU guard: verify tree root hasn't changed during LLM inference
+    if st.tree.as_ref().map(|t| t.root()) != Some(root) {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorBody {
+                error: "tree changed during inference — retry query".into(),
+            }),
+        ));
+    }
 
     // Build manifest
     let manifest = Manifest {
@@ -377,28 +524,40 @@ async fn query_handler(
 
     // Create note + settle via kernel poke
     st.note_counter += 1;
+    save_note_counter(&st.output_dir, st.note_counter);
     let note_id = st.note_counter;
 
     let note = Note {
         id: note_id,
-        hull: st.hull_id,
+        hull: hull_id,
         root,
         state: NoteState::Pending,
     };
 
     let settle_poke = noun_builder::build_settle_poke(&note, &manifest, &root);
-    let effects = st
-        .app
-        .poke(SystemWire.to_wire(), settle_poke)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorBody {
-                    error: format!("kernel settle poke failed: {e}"),
-                }),
-            )
-        })?;
+    let effects = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        st.app.poke(SystemWire.to_wire(), settle_poke),
+    )
+    .await
+    .map_err(|_| {
+        eprintln!("kernel settle poke timed out");
+        (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(ErrorBody {
+                error: "kernel operation timed out".into(),
+            }),
+        )
+    })?
+    .map_err(|e| {
+        eprintln!("kernel settle poke failed: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorBody {
+                error: "internal error".into(),
+            }),
+        )
+    })?;
 
     let root_hex = crate::merkle::format_tip5(&root);
 
@@ -411,7 +570,7 @@ async fn query_handler(
         if st.settlement.can_submit() {
             let note_for_settlement = Note {
                 id: note_id,
-                hull: st.hull_id,
+                hull: hull_id,
                 root,
                 state: NoteState::Settled,
             };
@@ -466,7 +625,7 @@ async fn query_handler(
 
     Ok(Json(QueryResponse {
         query: req.query,
-        chunks_retrieved: hits.len(),
+        chunks_retrieved: hits_len,
         retrievals: retrieval_infos,
         prompt_bytes,
         output,
@@ -483,97 +642,117 @@ async fn prove_handler(
     State(state): State<SharedState>,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<ProveResponse>, (StatusCode, Json<ErrorBody>)> {
-    let mut st = state.lock().await;
+    // --- Phase 1: read state under lock, build retrievals + prompt ---
+    let (retrievals, retrieval_infos, prompt, prompt_bytes, root, hull_id, hits_len) = {
+        let st = state.inner.lock().await;
 
-    // Pre-flight: reject if stack is too small for STARK proving (~3GB needed)
-    if matches!(st.stack_size, NockStackSize::Tiny | NockStackSize::Small | NockStackSize::Normal | NockStackSize::Medium) {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorBody {
-                error: format!(
-                    "STARK proving requires --stack-size large (4GB) or larger. \
-                     Current stack: {:?}. Restart hull with: hull --stack-size large --serve",
-                    st.stack_size
-                ),
-            }),
-        ));
-    }
-
-    let tree = st.tree.as_ref().ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorBody {
-                error: "no documents ingested — call POST /ingest first".into(),
-            }),
-        )
-    })?;
-
-    let root = tree.root();
-    let k = req.top_k.unwrap_or(st.top_k);
-
-    // Retrieve
-    let hits = st.retriever.retrieve(&req.query, &st.chunks, k);
-    if hits.is_empty() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorBody {
-                error: "no relevant chunks found for query".into(),
-            }),
-        ));
-    }
-
-    // Validate retriever indices before use
-    for h in &hits {
-        if h.chunk_index >= st.chunks.len() {
+        // Pre-flight: reject if stack is too small for STARK proving (~3GB needed)
+        if matches!(st.stack_size, NockStackSize::Tiny | NockStackSize::Small | NockStackSize::Normal | NockStackSize::Medium) {
             return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::SERVICE_UNAVAILABLE,
                 Json(ErrorBody {
-                    error: format!("retriever returned invalid index {}", h.chunk_index),
+                    error: format!(
+                        "STARK proving requires --stack-size large (4GB) or larger. \
+                         Current stack: {:?}. Restart hull with: hull --stack-size large --serve",
+                        st.stack_size
+                    ),
                 }),
             ));
         }
-    }
 
-    let retrieval_infos: Vec<RetrievalInfo> = hits
-        .iter()
-        .map(|h| {
-            let dat = &st.chunks[h.chunk_index].dat;
-            RetrievalInfo {
-                chunk_id: st.chunks[h.chunk_index].id,
-                score: h.score,
-                preview: if dat.len() > 80 {
-                    format!("{}...", &dat[..80])
-                } else {
-                    dat.clone()
-                },
+        let tree = st.tree.as_ref().ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorBody {
+                    error: "no documents ingested — call POST /ingest first".into(),
+                }),
+            )
+        })?;
+
+        let root = tree.root();
+        let k = req.top_k.unwrap_or(st.top_k).min(MAX_TOP_K); // V-C04
+
+        // Retrieve
+        let hits = st.retriever.retrieve(&req.query, &st.chunks, k);
+        if hits.is_empty() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorBody {
+                    error: "no relevant chunks found for query".into(),
+                }),
+            ));
+        }
+
+        // Validate retriever indices before use
+        for h in &hits {
+            if h.chunk_index >= st.chunks.len() {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorBody {
+                        error: format!("retriever returned invalid index {}", h.chunk_index),
+                    }),
+                ));
             }
-        })
-        .collect();
+        }
 
-    let retrieved_chunks: Vec<&Chunk> =
-        hits.iter().map(|h| &st.chunks[h.chunk_index]).collect();
+        let retrieval_infos: Vec<RetrievalInfo> = hits
+            .iter()
+            .map(|h| {
+                let dat = &st.chunks[h.chunk_index].dat;
+                RetrievalInfo {
+                    chunk_id: st.chunks[h.chunk_index].id,
+                    score: h.score,
+                    preview: if dat.len() > 80 {
+                        format!("{}...", &dat[..80])
+                    } else {
+                        dat.clone()
+                    },
+                }
+            })
+            .collect();
 
-    let retrievals: Vec<Retrieval> = hits
-        .iter()
-        .map(|h| Retrieval {
-            chunk: st.chunks[h.chunk_index].clone(),
-            proof: tree.proof(h.chunk_index),
-            score: h.score_fixed(),
-        })
-        .collect();
+        let retrieved_chunks: Vec<&Chunk> =
+            hits.iter().map(|h| &st.chunks[h.chunk_index]).collect();
 
-    // Build prompt + call LLM
-    let prompt = llm::build_prompt(&req.query, &retrieved_chunks);
-    let prompt_bytes = prompt.len();
+        let retrievals: Vec<Retrieval> = hits
+            .iter()
+            .map(|h| Retrieval {
+                chunk: st.chunks[h.chunk_index].clone(),
+                proof: tree.proof(h.chunk_index),
+                score: h.score_fixed(),
+            })
+            .collect();
 
-    let output = st.llm.generate(&prompt).await.map_err(|e| {
+        let prompt = llm::build_prompt(&req.query, &retrieved_chunks);
+        let prompt_bytes = prompt.len();
+        let hits_len = hits.len();
+
+        (retrievals, retrieval_infos, prompt, prompt_bytes, root, st.hull_id, hits_len)
+    }; // lock dropped here
+
+    // --- Phase 2: LLM inference without lock (V-003b) ---
+    let output = state.llm.generate(&prompt).await.map_err(|e| {
+        eprintln!("LLM inference failed: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorBody {
-                error: format!("LLM inference failed: {e}"),
+                error: "inference failed".into(),
             }),
         )
     })?;
+
+    // --- Phase 3: prove + settle under lock ---
+    let mut st = state.inner.lock().await;
+
+    // TOCTOU guard: verify tree root hasn't changed during LLM inference
+    if st.tree.as_ref().map(|t| t.root()) != Some(root) {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorBody {
+                error: "tree changed during inference — retry query".into(),
+            }),
+        ));
+    }
 
     // Build manifest
     let manifest = Manifest {
@@ -586,11 +765,12 @@ async fn prove_handler(
 
     // Create note + prove via kernel poke (%prove instead of %settle)
     st.note_counter += 1;
+    save_note_counter(&st.output_dir, st.note_counter);
     let note_id = st.note_counter;
 
     let note = Note {
         id: note_id,
-        hull: st.hull_id,
+        hull: hull_id,
         root,
         state: NoteState::Pending,
     };
@@ -598,19 +778,29 @@ async fn prove_handler(
     let prove_poke = noun_builder::build_prove_poke(&note, &manifest, &root);
     eprintln!("[prove] firing %prove poke (note_id={note_id})...");
     let prove_start = std::time::Instant::now();
-    let effects = st
-        .app
-        .poke(SystemWire.to_wire(), prove_poke)
-        .await
-        .map_err(|e| {
-            eprintln!("[prove] kernel %prove poke ERRORED: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorBody {
-                    error: format!("kernel prove poke failed: {e}"),
-                }),
-            )
-        })?;
+    let effects = tokio::time::timeout(
+        std::time::Duration::from_secs(600),  // STARK proving is slow
+        st.app.poke(SystemWire.to_wire(), prove_poke),
+    )
+    .await
+    .map_err(|_| {
+        eprintln!("[prove] kernel %prove poke timed out");
+        (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(ErrorBody {
+                error: "prove operation timed out".into(),
+            }),
+        )
+    })?
+    .map_err(|e| {
+        eprintln!("[prove] kernel %prove poke ERRORED: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorBody {
+                error: "internal error".into(),
+            }),
+        )
+    })?;
     let prove_elapsed = prove_start.elapsed();
     eprintln!("[prove] poke returned {} effect(s) in {:.2}s", effects.len(), prove_elapsed.as_secs_f64());
 
@@ -624,6 +814,8 @@ async fn prove_handler(
     let mut settled = false;
 
     if let Some(effect_slab) = effects.first() {
+        // SAFETY: effect_slab comes from NockApp::poke, which sets the root.
+        // The slab is live and owned by this scope.
         let root_noun = unsafe { *effect_slab.root() };
         eprintln!("[prove] effect root: is_cell={}", root_noun.is_cell());
 
@@ -698,7 +890,7 @@ async fn prove_handler(
         if st.settlement.can_submit() {
             let note_for_settlement = Note {
                 id: note_id,
-                hull: st.hull_id,
+                hull: hull_id,
                 root,
                 state: NoteState::Settled,
             };
@@ -753,7 +945,7 @@ async fn prove_handler(
 
     Ok(Json(ProveResponse {
         query: req.query,
-        chunks_retrieved: hits.len(),
+        chunks_retrieved: hits_len,
         retrievals: retrieval_infos,
         prompt_bytes,
         output,
@@ -776,6 +968,9 @@ async fn prove_handler(
 pub async fn serve(state: SharedState, port: u16, bind_addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     let app = router(state);
     let listener = tokio::net::TcpListener::bind(format!("{bind_addr}:{port}")).await?;
+    if std::env::var("VESL_API_KEY").map_or(true, |k| k.is_empty()) {
+        eprintln!("WARNING: VESL_API_KEY not set — API endpoints are unauthenticated (V-C01)");
+    }
     println!("Vesl Hull API listening on http://{bind_addr}:{port}");
     println!("  POST /ingest  — upload documents");
     println!("  POST /query   — retrieve + infer + settle");
@@ -811,18 +1006,21 @@ mod tests {
                 .await
                 .expect("kernel boot");
 
-        Arc::new(Mutex::new(AppState {
-            app,
-            chunks: Vec::new(),
-            tree: None,
-            hull_id: 7,
-            top_k: 2,
+        Arc::new(ServerState {
+            inner: Mutex::new(AppState {
+                app,
+                chunks: Vec::new(),
+                tree: None,
+                hull_id: 7,
+                top_k: 2,
+                retriever: Box::new(KeywordRetriever),
+                note_counter: 0,
+                settlement: SettlementConfig::local(),
+                stack_size: NockStackSize::Normal,
+                output_dir: std::env::temp_dir(),
+            }),
             llm: Box::new(llm::StubProvider),
-            retriever: Box::new(KeywordRetriever),
-            note_counter: 0,
-            settlement: SettlementConfig::local(),
-            stack_size: NockStackSize::Normal,
-        }))
+        })
     }
 
     /// Helper: collect response body bytes.
@@ -912,7 +1110,7 @@ mod tests {
         assert!(!json.merkle_root.is_empty());
 
         // Verify state updated
-        let st = state.lock().await;
+        let st = state.inner.lock().await;
         assert_eq!(st.chunks.len(), 2);
         assert!(st.tree.is_some());
     }
@@ -1017,5 +1215,28 @@ mod tests {
         assert!(!json.merkle_root.is_empty());
         assert!(json.prompt_bytes > 0);
         assert!(!json.output.is_empty());
+    }
+
+    #[tokio::test]
+    async fn oversized_body_rejected_413() {
+        let state = test_state().await;
+        let app = router(state);
+
+        // 11 MB body — exceeds the 10 MB hard limit
+        let big_body = vec![b'x'; 11 * 1024 * 1024];
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/ingest")
+                    .header("content-type", "application/json")
+                    .body(Body::from(big_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

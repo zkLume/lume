@@ -3375,20 +3375,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "lume-mantle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nock-noun-rs",
- "nockapp",
- "nockchain-client-rs",
- "nockchain-tip5-rs",
- "nockvm",
- "serde",
- "tokio",
-]
-
-[[package]]
 name = "macro-string"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3689,6 +3675,7 @@ version = "0.1.0"
 dependencies = [
  "nockchain-math",
  "serde",
+ "subtle",
 ]
 
 [[package]]
@@ -6415,6 +6402,21 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vesl-mantle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nock-noun-rs",
+ "nockapp",
+ "nockchain-client-rs",
+ "nockchain-tip5-rs",
+ "nockvm",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "virtue"

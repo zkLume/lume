@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+# NOTE: hull and vesl-mantle depend on the nockchain monorepo at ../../nockchain.
+# Full CI requires either:
+#   (a) a checkout step that clones nockchain to the expected relative path, or
+#   (b) publishing nockchain crates to a registry.
+# Until then, this workflow is useful for local `act` runs and as a template.
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Run tests (vesl-mantle)
+        run: cargo test -p vesl-mantle
+        working-directory: crates/vesl-mantle
+      - name: Run tests (hull, including JAM alignment)
+        run: cargo test --lib
+        working-directory: hull
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Audit dependencies (vesl-mantle)
+        run: cargo audit
+        working-directory: crates/vesl-mantle
+      - name: Audit dependencies (hull)
+        run: cargo audit
+        working-directory: hull
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (vesl-mantle)
+        run: cargo clippy -p vesl-mantle -- -D warnings
+        working-directory: crates/vesl-mantle
+      - name: Clippy (hull)
+        run: cargo clippy --lib -- -D warnings
+        working-directory: hull

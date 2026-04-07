@@ -225,7 +225,7 @@ pub fn load_config(path: &Path) -> VeslConfig {
         Ok(contents) => match toml::from_str(&contents) {
             Ok(cfg) => cfg,
             Err(e) => {
-                eprintln!("warn: failed to parse {}: {e}", path.display());
+                eprintln!("WARNING: failed to parse {}: {e} — using default config", path.display());
                 VeslConfig::default()
             }
         },

@@ -18,6 +18,7 @@
 ::
 /-  *vesl
 /+  *vesl-graft
+/+  *vesl-logic
 /=  *  /common/wrapper
 ::
 =>
@@ -93,27 +94,43 @@
       ::  --- grafted verification ---
       ::  everything below is delegation.  vesl-poke handles
       ::  the verification logic, we just wire state in and out.
+      ::  the RAG gate casts opaque data to a manifest and verifies it.
       ::
         %vesl-register
       =/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+      =/  rag-gate=verify-gate
+        |=  [data=* expected-root=@]
+        ^-  ?
+        =/  mani  ;;(manifest data)
+        (verify-manifest mani expected-root)
       =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc)
+        (vesl-poke vesl.state lc rag-gate)
       :_  state(vesl new-vesl)
       ^-  (list effect)
       efx
       ::
         %vesl-verify
       =/  lc=vesl-cause  [%vesl-verify payload.u.act]
+      =/  rag-gate=verify-gate
+        |=  [data=* expected-root=@]
+        ^-  ?
+        =/  mani  ;;(manifest data)
+        (verify-manifest mani expected-root)
       =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc)
+        (vesl-poke vesl.state lc rag-gate)
       :_  state(vesl new-vesl)
       ^-  (list effect)
       efx
       ::
         %vesl-settle
       =/  lc=vesl-cause  [%vesl-settle payload.u.act]
+      =/  rag-gate=verify-gate
+        |=  [data=* expected-root=@]
+        ^-  ?
+        =/  mani  ;;(manifest data)
+        (verify-manifest mani expected-root)
       =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc)
+        (vesl-poke vesl.state lc rag-gate)
       :_  state(vesl new-vesl)
       ^-  (list effect)
       efx

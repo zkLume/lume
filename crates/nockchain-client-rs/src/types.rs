@@ -113,12 +113,24 @@ pub fn extract_spendable_utxos(
         use nockapp_grpc::pb::common::v2::note::NoteVersion;
         let (is_v1, amount, note_data) = match &note.note_version {
             Some(NoteVersion::V1(v1)) => {
-                let amt = v1.assets.as_ref().map_or(0, |n| n.value);
+                let amt = match v1.assets.as_ref() {
+                    Some(n) => n.value,
+                    None => {
+                        eprintln!("warn: V1 UTXO missing amount field, skipping");
+                        continue;
+                    }
+                };
                 let nd = extract_note_data(note);
                 (true, amt, nd)
             }
             Some(NoteVersion::Legacy(v0)) => {
-                let amt = v0.assets.as_ref().map_or(0, |n| n.value);
+                let amt = match v0.assets.as_ref() {
+                    Some(n) => n.value,
+                    None => {
+                        eprintln!("warn: legacy UTXO missing amount field, skipping");
+                        continue;
+                    }
+                };
                 (false, amt, None)
             }
             None => continue,

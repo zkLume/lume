@@ -170,6 +170,8 @@ impl WalletKernel {
             .await
             .map_err(|e| anyhow::anyhow!("wallet signing-keys peek failed: {e:?}"))?;
 
+        // SAFETY: result is a NounSlab returned from NockApp::peek. The root
+        // is valid while the slab is live. from_noun reads but does not take ownership.
         let decoded: Option<Option<Vec<ChainHash>>> =
             unsafe { Option::from_noun(result.root())? };
         Ok(decoded.flatten().unwrap_or_default())
@@ -191,6 +193,8 @@ impl WalletKernel {
             .await
             .map_err(|e| anyhow::anyhow!("wallet tracked-pubkeys peek failed: {e:?}"))?;
 
+        // SAFETY: result is a NounSlab returned from NockApp::peek. The root
+        // is valid while the slab is live. from_noun reads but does not take ownership.
         let decoded: Option<Option<Vec<String>>> =
             unsafe { Option::from_noun(result.root())? };
         Ok(decoded.flatten().unwrap_or_default())

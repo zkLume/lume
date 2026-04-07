@@ -39,6 +39,7 @@
 use nockchain_math::belt::Belt;
 use nockchain_math::belt::PRIME;
 use nockchain_math::tip5::hash::{hash_10, hash_varlen};
+use subtle::ConstantTimeEq;
 
 /// tip5 digest: 5 Goldilocks field elements.
 ///
@@ -172,6 +173,11 @@ pub fn hash_pair(l: &Tip5Hash, r: &Tip5Hash) -> Tip5Hash {
 ///   `side=true`  -> sibling is LEFT  -> `hash_pair(sibling, current)`
 ///   `side=false` -> sibling is RIGHT -> `hash_pair(current, sibling)`
 pub fn verify_proof(leaf_data: &[u8], proof: &[ProofNode], expected_root: &Tip5Hash) -> bool {
+    // Depth guard: match Hoon's 64-node limit
+    if proof.len() > 64 {
+        return false;
+    }
+
     let mut cur = hash_leaf(leaf_data);
 
     for node in proof {
@@ -182,7 +188,10 @@ pub fn verify_proof(leaf_data: &[u8], proof: &[ProofNode], expected_root: &Tip5H
         };
     }
 
-    cur == *expected_root
+    // Constant-time comparison to prevent timing side-channels
+    let cur_bytes: Vec<u8> = cur.iter().flat_map(|x| x.to_le_bytes()).collect();
+    let exp_bytes: Vec<u8> = expected_root.iter().flat_map(|x| x.to_le_bytes()).collect();
+    cur_bytes.ct_eq(&exp_bytes).into()
 }
 
 // ---------------------------------------------------------------------------

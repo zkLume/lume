@@ -591,6 +591,8 @@ name = "nockchain-tip5-rs"
 version = "0.1.0"
 dependencies = [
  "nockchain-math",
+ "serde",
+ "subtle",
 ]
 
 [[package]]

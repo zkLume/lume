@@ -11,6 +11,9 @@ pub use nockchain_tip5_rs::{
 // Chain/wallet clients (for Beak/Kraken users)
 pub use nockchain_client_rs::{ChainClient, ChainConfig, WalletClient, WalletConfig};
 
+// Noun building (for IntentVerifier trait)
+pub use nock_noun_rs::NounSlab;
+
 // Vesl domain types — mirrors of sur/vesl.hoon
 use serde::{Deserialize, Serialize};
 
@@ -62,4 +65,21 @@ pub struct Note {
     pub hull: u64,
     pub root: Tip5Hash,
     pub state: NoteState,
+}
+
+/// Generic settlement payload — mirrors graft-payload in vesl-graft.hoon.
+/// For RAG, `data` is the serialized manifest. For other domains, whatever
+/// the verification gate expects.
+#[derive(Debug, Clone)]
+pub struct GraftPayload {
+    pub note: Note,
+    pub data: Vec<u8>,
+    pub expected_root: Tip5Hash,
+}
+
+/// Domain verification trait. Implement for your computation type.
+/// `RagVerifier` is the built-in implementation for RAG manifests.
+pub trait IntentVerifier: Send + Sync {
+    fn verify(&self, data: &[u8], expected_root: &Tip5Hash) -> bool;
+    fn build_settle_poke(&self, payload: &GraftPayload) -> anyhow::Result<NounSlab>;
 }

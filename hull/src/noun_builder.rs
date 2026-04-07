@@ -289,8 +289,6 @@ pub fn build_hedge_fund_scenario() -> (Note, Manifest, Tip5Hash) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::Path;
     use nock_noun_rs::cue;
 
     #[test]
@@ -307,13 +305,13 @@ mod tests {
             hex::encode(&jam_bytes[..32.min(jam_bytes.len())])
         );
 
-        let test_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-        fs::create_dir_all(&test_dir).expect("create tests dir");
-        let jam_path = test_dir.join("test_payload.jam");
-        fs::write(&jam_path, &jam_bytes).expect("write jam file");
+        // V-L07: use tempfile so test artifacts are cleaned up automatically
+        let mut tmp = tempfile::NamedTempFile::new().expect("create temp file");
+        std::io::Write::write_all(&mut tmp, &jam_bytes).expect("write jam file");
+        let jam_path = tmp.path();
         println!("Wrote {} bytes to {}", jam_bytes.len(), jam_path.display());
 
-        let read_back = fs::read(&jam_path).expect("read jam file");
+        let read_back = std::fs::read(jam_path).expect("read jam file");
         assert_eq!(read_back, jam_bytes, "file content must match");
     }
 

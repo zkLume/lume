@@ -104,6 +104,10 @@ struct OllamaResponse {
 /// need significant time for large prompts.
 const DEFAULT_GENERATE_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// V-L05: max bytes read from LLM response body (10 MB). Prevents a
+/// malfunctioning or adversarial Ollama instance from filling memory.
+const MAX_LLM_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+
 /// LLM provider backed by an Ollama instance (local or remote).
 ///
 /// Default endpoint: `http://localhost:11434`
@@ -124,8 +128,12 @@ impl OllamaProvider {
     }
 
     pub fn with_timeout(base_url: &str, model: &str, timeout: Duration) -> Self {
+        let trimmed = base_url.trim_end_matches('/');
+        if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+            panic!("Ollama URL must use http:// or https:// scheme, got: {trimmed}");
+        }
         Self {
-            base_url: base_url.trim_end_matches('/').to_string(),
+            base_url: trimmed.to_string(),
             model: model.to_string(),
             client: reqwest::Client::builder()
                 .timeout(timeout)
@@ -170,9 +178,19 @@ impl LlmProvider for OllamaProvider {
                 )));
             }
 
-            let parsed: OllamaResponse = resp
-                .json()
+            // V-L05: read with size cap to prevent OOM from runaway LLM
+            let bytes = resp
+                .bytes()
                 .await
+                .map_err(|e| LlmError::Parse(e.to_string()))?;
+            if bytes.len() > MAX_LLM_RESPONSE_BYTES {
+                return Err(LlmError::Parse(format!(
+                    "LLM response too large: {} bytes (max {})",
+                    bytes.len(),
+                    MAX_LLM_RESPONSE_BYTES,
+                )));
+            }
+            let parsed: OllamaResponse = serde_json::from_slice(&bytes)
                 .map_err(|e| LlmError::Parse(e.to_string()))?;
 
             Ok(parsed.response)

@@ -542,18 +542,21 @@ mod http_api {
         .await
         .expect("kernel boot");
 
-        let state = Arc::new(Mutex::new(api::AppState {
-            app,
-            chunks: Vec::new(),
-            tree: None,
-            hull_id: 7,
-            top_k: 2,
+        let state = Arc::new(api::ServerState {
+            inner: Mutex::new(api::AppState {
+                app,
+                chunks: Vec::new(),
+                tree: None,
+                hull_id: 7,
+                top_k: 2,
+                retriever: Box::new(KeywordRetriever),
+                note_counter: 0,
+                settlement: hull::config::SettlementConfig::local(),
+                stack_size: nockapp::kernel::boot::NockStackSize::Normal,
+                output_dir: tmp.path().to_path_buf(),
+            }),
             llm: Box::new(StubProvider),
-            retriever: Box::new(KeywordRetriever),
-            note_counter: 0,
-            settlement: hull::config::SettlementConfig::local(),
-            stack_size: nockapp::kernel::boot::NockStackSize::Normal,
-        }));
+        });
 
         (api::router(state.clone()), state, tmp)
     }

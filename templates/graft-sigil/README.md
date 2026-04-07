@@ -44,8 +44,13 @@ In your poke arm, delegate:
 ```hoon
   %vesl-register
 =/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+=/  rag-gate=verify-gate
+  |=  [data=* expected-root=@]
+  ^-  ?
+  =/  mani  ;;(manifest data)
+  (verify-manifest mani expected-root)
 =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-  (vesl-poke vesl.state lc)
+  (vesl-poke vesl.state lc rag-gate)
 :_  state(vesl new-vesl)
 ^-  (list effect)  efx
 ```
@@ -87,10 +92,11 @@ cargo run
 
 ```
 hoon/
-  app/app.hoon         — the kernel (domain + graft)
-  lib/vesl-graft.hoon  — composable state and poke dispatcher
-  lib/vesl-logic.hoon  — verification gates (graft dependency)
-  sur/vesl.hoon         — type definitions
+  app/app.hoon          — the kernel (domain + graft)
+  lib/vesl-graft.hoon   — composable state and poke dispatcher
+  lib/vesl-logic.hoon   — RAG verification gates
+  lib/vesl-merkle.hoon  — Merkle primitives (tip5)
+  sur/vesl.hoon          — type definitions
   common/wrapper.hoon  — NockApp protocol
 src/main.rs            — Rust driver with Sigil + Vigil demo
 ```

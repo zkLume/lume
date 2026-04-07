@@ -19,3 +19,4 @@ nockvm = { path = "../../../nockchain/crates/nockvm/rust/nockvm" }
 anyhow = "1.0"
 tokio = { version = "1", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"

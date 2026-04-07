@@ -9,6 +9,9 @@ use nockchain_tip5_rs::{verify_proof, ProofNode, Tip5Hash};
 
 use crate::types::Manifest;
 
+/// Maximum number of registered roots to prevent unbounded memory growth.
+const MAX_ROOTS: usize = 10_000;
+
 pub struct Vigil {
     roots: HashSet<[u64; 5]>,
 }
@@ -21,9 +24,17 @@ impl Vigil {
         }
     }
 
-    /// Register a root as trusted.
-    pub fn register_root(&mut self, root: Tip5Hash) {
-        self.roots.insert(root);
+    /// Register a root as trusted. Returns false if at capacity.
+    pub fn register_root(&mut self, root: Tip5Hash) -> bool {
+        if self.roots.len() >= MAX_ROOTS && !self.roots.contains(&root) {
+            return false;
+        }
+        self.roots.insert(root)
+    }
+
+    /// Revoke a previously registered root. Returns true if the root was present.
+    pub fn revoke_root(&mut self, root: &Tip5Hash) -> bool {
+        self.roots.remove(root)
     }
 
     /// Verify a chunk against a registered root. Pure math, no kernel.
@@ -53,6 +64,10 @@ impl Vigil {
         let mut dats: Vec<&str> = Vec::new();
 
         for retrieval in &manifest.results {
+            // Reject chunks containing null bytes (cross-VM semantic divergence)
+            if retrieval.chunk.dat.contains('\0') {
+                return false;
+            }
             let chunk_bytes = retrieval.chunk.dat.as_bytes();
             if !verify_proof(chunk_bytes, &retrieval.proof, root) {
                 return false;

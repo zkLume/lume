@@ -15,6 +15,7 @@
 use std::fmt;
 
 use ibig::UBig;
+use zeroize::Zeroize;
 use nockchain_math::belt::Belt;
 use nockchain_math::crypto::cheetah::{ch_scal_big, trunc_g_order, A_GEN, G_ORDER};
 use nockchain_math::tip5::hash::hash_varlen;
@@ -110,7 +111,7 @@ pub fn pubkey_hash(pk: &SchnorrPubkey) -> Hash {
 ///
 /// Compatible with Hoon's `sign:affine:belt-schnorr:cheetah`.
 pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> Result<SchnorrSignature, SigningError> {
-    let sk_big = belts8_to_ubig(sk);
+    let mut sk_big = belts8_to_ubig(sk);
     if sk_big == UBig::from(0u64) || sk_big >= *G_ORDER {
         return Err(SigningError::InvalidSecretKey);
     }
@@ -125,7 +126,9 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> Result<SchnorrSignature, Sig
     nonce_input.extend_from_slice(message);
     nonce_input.extend_from_slice(sk);
     let nonce_hash = hash_varlen(&mut nonce_input);
-    let nonce = trunc_g_order(&nonce_hash);
+    // Zeroize: nonce_input contains secret key material (V-C02)
+    for b in nonce_input.iter_mut() { b.0.zeroize(); }
+    let mut nonce = trunc_g_order(&nonce_hash);
     if nonce == UBig::from(0u64) {
         return Err(SigningError::ZeroNonce);
     }
@@ -153,10 +156,20 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> Result<SchnorrSignature, Sig
     }
 
     // 6. Encode as 8 × 32-bit Belt chunks (Hoon's t8 representation)
-    Ok(SchnorrSignature {
+    let result = SchnorrSignature {
         chal: ubig_to_belts8(&chal),
         sig: ubig_to_belts8(&sig),
-    })
+    };
+
+    // Zeroize sensitive scalar intermediates (V-C02).
+    // UBig doesn't impl Zeroize — overwrite + drop is best-effort.
+    // True zeroization requires ibig crate changes.
+    sk_big = UBig::from(0u64);
+    nonce = UBig::from(0u64);
+    drop(sk_big);
+    drop(nonce);
+
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +192,8 @@ pub fn key_from_seed_phrase(phrase: &str) -> Result<[Belt; 8], SigningError> {
         belts.push(Belt(val));
     }
     let hash = hash_varlen(&mut belts);
+    // Zeroize: belts contains seed-derived key material (V-C02)
+    for b in belts.iter_mut() { b.0.zeroize(); }
     let scalar = trunc_g_order(&hash);
     if scalar == UBig::from(0u64) {
         return Err(SigningError::ZeroSeedScalar);

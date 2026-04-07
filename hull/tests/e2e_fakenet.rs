@@ -432,18 +432,21 @@ async fn fakenet_http_api_full_pipeline() {
         .await
         .expect("kernel boot");
 
-    let state = Arc::new(Mutex::new(hull::api::AppState {
-        app,
-        chunks: Vec::new(),
-        tree: None,
-        hull_id: 7,
-        top_k: 2,
+    let state = Arc::new(hull::api::ServerState {
+        inner: Mutex::new(hull::api::AppState {
+            app,
+            chunks: Vec::new(),
+            tree: None,
+            hull_id: 7,
+            top_k: 2,
+            retriever: Box::new(hull::retrieve::KeywordRetriever),
+            note_counter: 0,
+            settlement: hull::config::SettlementConfig::local(),
+            stack_size: nockapp::kernel::boot::NockStackSize::Normal,
+            output_dir: std::env::temp_dir(),
+        }),
         llm: Box::new(hull::llm::StubProvider),
-        retriever: Box::new(hull::retrieve::KeywordRetriever),
-        note_counter: 0,
-        settlement: hull::config::SettlementConfig::local(),
-        stack_size: nockapp::kernel::boot::NockStackSize::Normal,
-    }));
+    });
 
     let router = hull::api::router(state.clone());
 

@@ -20,20 +20,28 @@ Copy these into your template's `hoon/` directory:
 
 ```
 hoon/
-  sur/vesl.hoon          # type definitions
-  lib/vesl-graft.hoon    # state + poke dispatcher
-  lib/vesl-logic.hoon    # verification gates (graft dependency)
+  lib/vesl-graft.hoon    # state + poke dispatcher (gate-agnostic)
+  lib/vesl-merkle.hoon   # Merkle primitives (tip5)
 ```
 
-These live in `protocol/sur/` and `protocol/lib/` in the Vesl repo.
+For RAG verification, also copy:
+
+```
+hoon/
+  sur/vesl.hoon          # RAG type definitions (manifest, chunk, etc.)
+  lib/vesl-logic.hoon    # RAG verification gates (verify-manifest)
+```
+
+These live in `protocol/sur/` and `protocol/lib/` in the Vesl repo. For non-RAG gates, only `vesl-graft.hoon` and `vesl-merkle.hoon` are required — see [Custom Gates](#custom-gates--beyond-rag) below.
 
 ## Step 2: Import the Graft
 
 At the top of your kernel (`hoon/app/app.hoon`):
 
 ```hoon
-/-  *vesl
-/+  *vesl-graft
+/-  *vesl             :: RAG types (only needed for RAG gates)
+/+  *vesl-graft       :: state + poke dispatcher
+/+  *vesl-logic       :: RAG verification gates (only for RAG)
 /=  *  /common/wrapper
 ```
 
@@ -63,18 +71,23 @@ Add `vesl-cause` to your cause union. It brings `%vesl-register`, `%vesl-verify`
 
 ## Step 5: Delegate Pokes
 
-In your `++poke` arm, delegate Vesl causes to `vesl-poke`. Each one is three lines:
+In your `++poke` arm, delegate Vesl causes to `vesl-poke`. Define your verification gate and pass it as the third argument:
 
 ```hoon
   %vesl-register
 =/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+=/  rag-gate=verify-gate
+  |=  [data=* expected-root=@]
+  ^-  ?
+  =/  mani  ;;(manifest data)
+  (verify-manifest mani expected-root)
 =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-  (vesl-poke vesl.state lc)
+  (vesl-poke vesl.state lc rag-gate)
 :_  state(vesl new-vesl)
 ^-  (list effect)  efx
 ```
 
-Same pattern for `%vesl-verify` and `%vesl-settle`. Copy-paste, change the cause tag.
+Same pattern for `%vesl-verify` and `%vesl-settle`. Copy-paste, change the cause tag. The gate can be any function matching `$-([data=* expected-root=@] ?)` — see [Custom Gates](#custom-gates--beyond-rag).
 
 ## Step 6: Delegate Peeks
 
@@ -179,9 +192,76 @@ If you need settlement with replay protection: delegate `%vesl-settle` (Anchor p
 | Settle notes | Graft (%vesl-settle) | Yes |
 | STARK proofs | Full vesl-kernel + prover | Yes (18MB) |
 
+## Custom Gates — Beyond RAG
+
+The Graft is domain-agnostic. The examples above use a RAG verification gate (cast data to a manifest, verify Merkle proofs, check prompt reconstruction). That's one gate. The `verify-gate` type is:
+
+```hoon
++$  verify-gate  $-([data=* expected-root=@] ?)
+```
+
+`data` is opaque `*`. Cast it to your domain type and return a loobean. Some examples:
+
+```hoon
+::  RAG manifest verification (graft-sigil, graft-anchor)
+|=  [data=* expected-root=@]
+=/  mani  ;;(manifest data)
+(verify-manifest mani expected-root)
+
+::  Simple hash comparison (graft-intent)
+|=  [data=* expected-root=@]
+=((hash-leaf ;;(@ data)) expected-root)
+
+::  Signature verification (your domain)
+|=  [data=* expected-root=@]
+=/  payload  ;;([sig=@ msg=@] data)
+(verify-sig sig.payload msg.payload expected-root)
+
+::  Always-true gate (testing)
+|=  [data=* expected-root=@]
+%.y
+```
+
+### How to Use a Custom Gate
+
+1. **Import what you need.** For hash-based gates: `/+  *vesl-merkle`. For RAG: `/+  *vesl-logic` and `/-  *vesl`. For your own logic: import your own library.
+
+2. **Define the gate inline** in your poke delegation:
+
+```hoon
+  %vesl-settle
+=/  lc=vesl-cause  [%vesl-settle payload.u.act]
+=/  my-gate=verify-gate
+  |=  [data=* expected-root=@]
+  ^-  ?
+  :: ...your verification logic...
+  %.y
+=/  [efx=(list vesl-effect) new-vesl=vesl-state]
+  (vesl-poke vesl.state lc my-gate)
+:_  state(vesl new-vesl)
+^-  (list effect)  efx
+```
+
+3. **Build the payload from Rust.** The Graft expects a jammed `graft-payload`:
+
+```hoon
++$  graft-payload
+  $:  note=[id=@ hull=@ root=@ state=[%pending ~]]
+      data=*
+      expected-root=@
+  ==
+```
+
+`data` is whatever your gate expects. JAM the whole payload, pass it as the `payload` field in `%vesl-settle` or `%vesl-verify`.
+
+### The graft-intent Template
+
+[`graft-intent`](./graft-intent/) is a working example of a non-RAG gate. No `sur/vesl.hoon`, no `vesl-logic.hoon`. The gate is one line: hash the data, compare to root. Read it to see the pattern stripped to the minimum.
+
 ## Reference Templates
 
-- [`graft-sigil`](./graft-sigil/) — Complete example with Sigil + Vigil
-- [`graft-anchor`](./graft-anchor/) — Extends graft-sigil with settlement
+- [`graft-sigil`](./graft-sigil/) — Sigil + Vigil with RAG verification gate
+- [`graft-anchor`](./graft-anchor/) — Full settlement lifecycle with RAG gate
+- [`graft-intent`](./graft-intent/) — Custom hash gate, no RAG types
 
 ~

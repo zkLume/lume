@@ -89,6 +89,12 @@ pub async fn build_settlement_tx(
     let note_data = settlement_to_note_data(&params.settlement);
 
     // 5. Build the output seed
+    if params.fee > params.input_amount / 2 {
+        return Err(anyhow::anyhow!(
+            "fee ({}) exceeds 50% of input amount ({})",
+            params.fee, params.input_amount
+        ));
+    }
     let output_amount = params.input_amount.saturating_sub(params.fee);
     let seed = Seed {
         output_source: None, // Not a coinbase output
@@ -126,6 +132,7 @@ pub async fn build_settlement_tx(
         signature,
     };
 
+    // V-L03: single-signer only — multi-sig requires multiple PkhSignatureEntry values
     let witness = Witness::new(
         LockMerkleProof::Full(lock_merkle_proof),
         PkhSignature::new(vec![pkh_sig_entry]),
@@ -283,6 +290,8 @@ fn extract_hash_from_effect(effects: &[NounSlab], expected_tag: &str) -> anyhow:
         .first()
         .ok_or_else(|| anyhow::anyhow!("no effects returned from %{expected_tag} poke"))?;
 
+    // SAFETY: effect_slab comes from NockApp::poke, which sets the root.
+    // The slab is live and owned by this scope.
     let root = unsafe { *effect_slab.root() };
     let cell = root
         .as_cell()
@@ -298,6 +307,8 @@ fn bytes_to_atom(slab: &mut NounSlab, bytes: &[u8]) -> nockvm::noun::Noun {
     if bytes.is_empty() {
         return D(0);
     }
+    // SAFETY: bytes slice is caller-provided and valid for the duration
+    // of this call. new_raw_bytes_ref copies into the slab allocator.
     unsafe {
         let mut indirect = IndirectAtom::new_raw_bytes_ref(slab, bytes);
         indirect.normalize_as_atom().as_noun()

@@ -69,6 +69,8 @@ pub fn make_atom(stack: &mut NockStack, bytes: &[u8]) -> Noun {
     if bytes.is_empty() {
         return D(0);
     }
+    // SAFETY: bytes is a valid slice. new_raw_bytes_ref copies data into the
+    // NockStack allocator. normalize_as_atom produces a canonical atom representation.
     unsafe {
         let mut indirect = IndirectAtom::new_raw_bytes_ref(stack, bytes);
         indirect.normalize_as_atom().as_noun()
@@ -149,6 +151,8 @@ pub fn make_atom_in(alloc: &mut impl NounAllocator, bytes: &[u8]) -> Noun {
     if bytes.is_empty() {
         return D(0);
     }
+    // SAFETY: bytes is a valid slice. new_raw_bytes_ref copies data into
+    // the allocator. normalize_as_atom produces a canonical atom representation.
     unsafe {
         let mut indirect = IndirectAtom::new_raw_bytes_ref(alloc, bytes);
         indirect.normalize_as_atom().as_noun()
