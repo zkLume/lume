@@ -213,6 +213,9 @@ const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_CHUNKS: usize = 50_000;
 /// Maximum top_k for retrieval queries.
 const MAX_TOP_K: usize = 100;
+/// Maximum STARK proof size for on-chain embedding (~3.5 MB).
+/// gRPC tonic default is 4 MB with zero overrides in Nockchain.
+const MAX_PROOF_BYTES: usize = 3_500_000;
 
 // ---------------------------------------------------------------------------
 // Auth middleware (V-C01)
@@ -574,8 +577,11 @@ async fn query_handler(
                 root,
                 state: NoteState::Settled,
             };
-            let settlement_data =
-                chain::SettlementData::from_settlement(&note_for_settlement, &manifest);
+            let settlement_data = chain::SettlementData::from_settlement(
+                &note_for_settlement,
+                &manifest,
+                None,
+            );
             let pkh = signing::pubkey_hash(&signing::derive_pubkey(sk));
             let pkh_b58 = pkh.to_base58();
 
@@ -636,6 +642,59 @@ async fn query_handler(
         tx_id,
         tx_accepted,
     }))
+}
+
+/// Render a Nock noun as debug text, extracting tapes and cords.
+fn render_noun_debug(noun: nockapp::Noun, depth: usize) -> String {
+    use nockapp::Noun;
+    if depth > 8 { return "...".into(); }
+    if noun.is_atom() {
+        if let Ok(a) = noun.as_atom() {
+            if a.as_u64() == Ok(0) { return "0".into(); }
+            let bytes = a.as_ne_bytes();
+            let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+            if len > 0 && len < 200 {
+                if let Ok(s) = std::str::from_utf8(&bytes[..len]) {
+                    if s.chars().all(|c| c.is_ascii_graphic() || c == ' ') {
+                        return format!("'{}'", s);
+                    }
+                }
+            }
+            if len <= 8 {
+                let mut val: u64 = 0;
+                for (i, &b) in bytes[..len].iter().enumerate() {
+                    val |= (b as u64) << (i * 8);
+                }
+                return format!("{}", val);
+            }
+            return format!("@{}bytes", len);
+        }
+        "?atom".into()
+    } else if let Ok(cell) = noun.as_cell() {
+        let head: Noun = cell.head();
+        let tail: Noun = cell.tail();
+        // Check for tape (list of small atoms)
+        let mut chars = Vec::new();
+        let mut walk: Noun = noun;
+        let mut is_tape = true;
+        while let Ok(c) = walk.as_cell() {
+            let h: Noun = c.head();
+            if let Ok(ha) = h.as_atom() {
+                if let Ok(v) = ha.as_u64() {
+                    if v > 0 && v < 128 { chars.push(v as u8 as char); } else { is_tape = false; break; }
+                } else { is_tape = false; break; }
+            } else { is_tape = false; break; }
+            walk = c.tail();
+        }
+        if is_tape && !chars.is_empty() && walk.is_atom() {
+            return format!("\"{}\"", chars.iter().collect::<String>());
+        }
+        let h = render_noun_debug(head, depth + 1);
+        let t = render_noun_debug(tail, depth + 1);
+        format!("[{} {}]", h, t)
+    } else {
+        "?".into()
+    }
 }
 
 async fn prove_handler(
@@ -810,6 +869,7 @@ async fn prove_handler(
     // On proof failure: ~[[%prove-failed ~]] — mule caught the crash, no settlement
     // On total crash: 0 effects — wrapper swallowed crash (pre-mule kernels)
     let mut proof_jam_hex = String::new();
+    let mut proof_bytes_raw: Option<bytes::Bytes> = None;
     let mut prove_error: Option<String> = None;
     let mut settled = false;
 
@@ -823,16 +883,83 @@ async fn prove_handler(
         let is_prove_failed = root_noun.as_cell().ok().and_then(|cell| {
             cell.head().as_atom().ok().and_then(|a| {
                 let bytes = a.as_ne_bytes();
-                if bytes == b"prove-failed" { Some(()) } else { None }
+                let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+                if &bytes[..len] == b"prove-failed" { Some(()) } else { None }
             })
         }).is_some();
 
         if is_prove_failed {
+            // Extract trace from [%prove-failed trace-jam]
+            // trace-jam is a jammed noun containing the mule crash trace
+            let tail_info = root_noun.as_cell().ok().map(|cell| {
+                let tail = cell.tail();
+                // The tail is (jam (list tank)) — CUE and walk the noun tree
+                if tail.is_atom() {
+                    let a = tail.as_atom().unwrap();
+                    let bytes = a.as_ne_bytes();
+                    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+                    let _ = std::fs::write("/tmp/prove_trace.bin", &bytes[..len]);
+                    eprintln!("[prove] trace atom: {} bytes", len);
+                    // CUE the jammed trace
+                    let mut cue_slab: NounSlab = NounSlab::new();
+                    match cue_slab.cue_into(bytes::Bytes::copy_from_slice(&bytes[..len])) {
+                        Ok(cued) => {
+                            // Walk the list and render each tank
+                            let mut msg_parts: Vec<String> = Vec::new();
+                            let mut list = cued;
+                            for _ in 0..20 {
+                                if list.is_atom() { break; }
+                                if let Ok(cell) = list.as_cell() {
+                                    let tank = cell.head();
+                                    // Render tank: try to extract text
+                                    let rendered = render_noun_debug(tank, 0);
+                                    msg_parts.push(rendered);
+                                    list = cell.tail();
+                                }
+                            }
+                            if msg_parts.is_empty() {
+                                format!("trace(cued): empty list")
+                            } else {
+                                format!("trace(cued): {}", msg_parts.join(" | "))
+                            }
+                        }
+                        Err(e) => {
+                            // Not a jammed noun — try as UTF-8
+                            eprintln!("[prove] CUE failed: {e}");
+                            if let Ok(s) = std::str::from_utf8(&bytes[..len]) {
+                                return format!("trace: {}", s);
+                            }
+                            format!("trace-raw: {} bytes", len)
+                        }
+                    }
+                } else {
+                    // Tail is a cell — walk it directly as (list tank)
+                    let mut msg_parts: Vec<String> = Vec::new();
+                    let mut list = tail;
+                    for _ in 0..20 {
+                        if list.is_atom() { break; }
+                        if let Ok(cell) = list.as_cell() {
+                            let tank = cell.head();
+                            let rendered = render_noun_debug(tank, 0);
+                            msg_parts.push(rendered);
+                            list = cell.tail();
+                        }
+                    }
+                    if msg_parts.is_empty() {
+                        "trace: empty".to_string()
+                    } else {
+                        format!("trace(cell): {}", msg_parts.join(" | "))
+                    }
+                }
+            }).unwrap_or_else(|| "unknown".to_string());
             eprintln!("[prove] kernel returned %prove-failed — proof crashed, note NOT settled");
+            eprintln!("[prove] {}", tail_info);
             prove_error = Some(
-                "prove-computation crashed in kernel (likely insufficient Nock stack). \
-                 Note was NOT settled. Ensure --stack-size large or larger."
-                    .into(),
+                format!(
+                    "prove-computation crashed in kernel ({}). \
+                     Note was NOT settled.",
+                    tail_info
+                ),
             );
         } else {
             match root_noun.as_cell() {
@@ -847,6 +974,7 @@ async fn prove_handler(
                     proof_slab.copy_into(proof_noun);
                     let proof_bytes = proof_slab.jam();
                     eprintln!("[prove] proof jammed: {} bytes", proof_bytes.len());
+                    proof_bytes_raw = Some(proof_bytes.clone());
                     proof_jam_hex = hex::encode(&proof_bytes);
                     settled = true;
                 }
@@ -894,8 +1022,23 @@ async fn prove_handler(
                 root,
                 state: NoteState::Settled,
             };
-            let settlement_data =
-                chain::SettlementData::from_settlement(&note_for_settlement, &manifest);
+            let proof_for_chain = proof_bytes_raw.clone().filter(|b| {
+                if b.len() > MAX_PROOF_BYTES {
+                    eprintln!(
+                        "[prove] proof too large for on-chain: {} bytes (max {})",
+                        b.len(),
+                        MAX_PROOF_BYTES
+                    );
+                    false
+                } else {
+                    true
+                }
+            });
+            let settlement_data = chain::SettlementData::from_settlement(
+                &note_for_settlement,
+                &manifest,
+                proof_for_chain,
+            );
             let pkh = signing::pubkey_hash(&signing::derive_pubkey(sk));
             let pkh_b58 = pkh.to_base58();
 

@@ -182,9 +182,27 @@ cd hull && cargo run -- --new --serve
 | `/status` | GET | tree state, settled notes, root |
 | `/health` | GET | liveness |
 
-Use `--new` on first boot (or after kernel recompilation) to avoid stale NockApp state. For STARK proving, boot with `--stack-size large`. For real LLM inference, pass `--ollama-url http://localhost:11434`. Works with remote Ollama instances too, e.g. RunPod: `--ollama-url https://{pod-id}-11434.proxy.runpod.net`.
+Use `--new` on first boot (or after kernel recompilation) to avoid stale NockApp state. For STARK proving, boot with `--stack-size huge` (see hardware requirements below). For real LLM inference, pass `--ollama-url http://localhost:11434`. Works with remote Ollama instances too, e.g. RunPod: `--ollama-url https://{pod-id}-11434.proxy.runpod.net`.
 
 The server binds to `127.0.0.1` by default. To expose to the network, pass `--bind-addr 0.0.0.0`. For dumbnet mode, pass the signing key via `--seed-phrase-file <path>` (reads one line, trimmed) instead of `--seed-phrase` to keep the value out of `ps` output.
+
+
+## Hardware Requirements
+
+`/query` and `/settle` run on modest hardware (4 GB RAM, `--stack-size normal`).
+
+`/prove` generates a STARK proof and needs significantly more. The Nockchain STARK prover allocates a 64 GB NockStack and is CPU-bound during FRI commitment and constraint evaluation.
+
+| | Verify only | STARK proof |
+|-|-------------|-------------|
+| RAM | 4 GB | 64+ GB |
+| Stack flag | `--stack-size normal` | `--stack-size huge` |
+
+On Linux, enable overcommit for the large virtual allocation:
+
+```bash
+sudo sysctl -w vm.overcommit_memory=1
+```
 
 
 ## License

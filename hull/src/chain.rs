@@ -53,7 +53,7 @@ use nockchain_types::tx_engine::v1::tx::SpendCondition;
 // ---------------------------------------------------------------------------
 
 /// Schema version for Vesl NoteData entries. Increment when the encoding changes.
-pub const VESL_DATA_VERSION: u64 = 1;
+pub const VESL_DATA_VERSION: u64 = 2;
 
 /// NoteData key: schema version.
 pub const KEY_VERSION: &str = "vesl-v";
@@ -65,6 +65,8 @@ pub const KEY_MERKLE_ROOT: &str = "vesl-rt";
 pub const KEY_NOTE_ID: &str = "vesl-nid";
 /// NoteData key: manifest hash (32-byte SHA-256 of the serialized manifest).
 pub const KEY_MANIFEST_HASH: &str = "vesl-mh";
+/// NoteData key: STARK proof (double-JAM'd opaque atom).
+pub const KEY_PROOF: &str = "vesl-prf";
 
 // ---------------------------------------------------------------------------
 // SettlementData — the Vesl-specific data embedded in a Nockchain Note
@@ -86,17 +88,25 @@ pub struct SettlementData {
     pub note_id: u64,
     /// tip5 hash of the serialized manifest (query + retrievals + prompt + output).
     pub manifest_hash: Tip5Hash,
+    /// Optional STARK proof (already-JAM'd bytes). Double-JAM'd when stored as NoteData.
+    /// `None` for v1 notes or when proof was not generated.
+    pub proof_jam: Option<bytes::Bytes>,
 }
 
 impl SettlementData {
     /// Create a new `SettlementData` from a settled Vesl note and its manifest.
-    pub fn from_settlement(note: &Note, manifest: &Manifest) -> Self {
+    pub fn from_settlement(
+        note: &Note,
+        manifest: &Manifest,
+        proof_jam: Option<bytes::Bytes>,
+    ) -> Self {
         Self {
             version: VESL_DATA_VERSION,
             hull_id: note.hull,
             merkle_root: note.root,
             note_id: note.id,
             manifest_hash: manifest_hash(manifest),
+            proof_jam,
         }
     }
 
@@ -106,13 +116,16 @@ impl SettlementData {
     /// jammed Noun value. The jammed format matches what Nockchain's
     /// NoteData encoding expects.
     pub fn to_note_data(&self) -> NoteData {
-        let entries = vec![
+        let mut entries = vec![
             jam_u64_entry(KEY_VERSION, self.version),
             jam_u64_entry(KEY_HULL_ID, self.hull_id),
             jam_tip5_entry(KEY_MERKLE_ROOT, &self.merkle_root),
             jam_u64_entry(KEY_NOTE_ID, self.note_id),
             jam_tip5_entry(KEY_MANIFEST_HASH, &self.manifest_hash),
         ];
+        if let Some(ref proof) = self.proof_jam {
+            entries.push(jam_opaque_bytes_entry(KEY_PROOF, proof));
+        }
         NoteData::new(entries)
     }
 
@@ -140,12 +153,21 @@ impl SettlementData {
         let manifest_hash = find_hash_entry(data, KEY_MANIFEST_HASH)
             .context("missing vesl-mhash entry in NoteData")?;
 
+        let proof_jam = if version >= 2 {
+            find_opaque_bytes_entry(data, KEY_PROOF)
+                .ok()
+                .map(bytes::Bytes::from)
+        } else {
+            None
+        };
+
         Ok(Self {
             version,
             hull_id,
             merkle_root,
             note_id,
             manifest_hash,
+            proof_jam,
         })
     }
 
@@ -277,6 +299,37 @@ fn find_hash_entry(data: &NoteData, key: &str) -> Result<Tip5Hash> {
         noun = cell.tail();
     }
     Ok(limbs)
+}
+
+/// Create a NoteDataEntry with a jammed opaque byte blob (double-JAM strategy).
+fn jam_opaque_bytes_entry(key: &str, raw_bytes: &[u8]) -> NoteDataEntry {
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    let noun = if raw_bytes.is_empty() {
+        D(0)
+    } else {
+        unsafe {
+            let mut indirect = IndirectAtom::new_raw_bytes_ref(&mut slab, raw_bytes);
+            indirect.normalize_as_atom().as_noun()
+        }
+    };
+    slab.set_root(noun);
+    let jammed = slab.jam();
+    NoteDataEntry::new(key.to_string(), jammed)
+}
+
+/// Find a NoteDataEntry by key and decode its jammed value as raw bytes.
+fn find_opaque_bytes_entry(data: &NoteData, key: &str) -> Result<Vec<u8>> {
+    let entry = find_entry(data, key)?;
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    slab.cue_into(entry.blob.clone())
+        .context("failed to cue NoteDataEntry blob")?;
+    let noun = unsafe { *slab.root() };
+    let atom = noun
+        .as_atom()
+        .map_err(|_| anyhow::anyhow!("expected atom for key '{key}', got cell"))?;
+    let bytes = atom.as_ne_bytes();
+    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+    Ok(bytes[..len].to_vec())
 }
 
 /// Find a NoteDataEntry by its key string.
@@ -885,14 +938,19 @@ impl ChainClient {
 
 impl std::fmt::Display for SettlementData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let proof_info = match &self.proof_jam {
+            Some(p) => format!("proof={}B", p.len()),
+            None => "proof=none".to_string(),
+        };
         write!(
             f,
-            "Settlement(v={}, hull={}, note={}, root={}, manifest={})",
+            "Settlement(v={}, hull={}, note={}, root={}, manifest={}, {})",
             self.version,
             self.hull_id,
             self.note_id,
             crate::merkle::format_tip5(&self.merkle_root),
             crate::merkle::format_tip5(&self.manifest_hash),
+            proof_info,
         )
     }
 }
@@ -936,11 +994,12 @@ mod tests {
         let note = test_note();
         let manifest = test_manifest();
 
-        let data = SettlementData::from_settlement(&note, &manifest);
+        let data = SettlementData::from_settlement(&note, &manifest, None);
         assert_eq!(data.version, VESL_DATA_VERSION);
         assert_eq!(data.hull_id, 7);
         assert_eq!(data.note_id, 42);
         assert_eq!(data.merkle_root, [0xAA; 5]);
+        assert!(data.proof_jam.is_none());
 
         // Encode to NoteData
         let note_data = data.to_note_data();
@@ -985,6 +1044,7 @@ mod tests {
             merkle_root: [0xBB; 5],
             note_id: 99,
             manifest_hash: [0xCC; 5],
+            proof_jam: None,
         };
         let note_data = data.to_note_data();
 
@@ -1011,6 +1071,7 @@ mod tests {
             merkle_root: [0; 5],
             note_id: 1,
             manifest_hash: [0; 5],
+            proof_jam: None,
         };
         let note_data = data.to_note_data();
         let result = SettlementData::from_note_data(&note_data);
@@ -1029,6 +1090,7 @@ mod tests {
             merkle_root: [1, 2, 3, 4, 5],
             note_id: 1,
             manifest_hash: [0; 5],
+            proof_jam: None,
         };
         let hash = data.merkle_root_as_chain_hash();
         // Hash::from_limbs preserves limb values directly
@@ -1043,6 +1105,7 @@ mod tests {
             merkle_root: [0xAA; 5],
             note_id: 42,
             manifest_hash: [0xBB; 5],
+            proof_jam: None,
         };
         let s = format!("{data}");
         assert!(s.contains("hull=7"));
@@ -1071,7 +1134,7 @@ mod tests {
     fn settlement_data_from_settlement_computes_manifest_hash() {
         let note = test_note();
         let manifest = test_manifest();
-        let sd = SettlementData::from_settlement(&note, &manifest);
+        let sd = SettlementData::from_settlement(&note, &manifest, None);
 
         // Manifest hash must match the standalone function
         assert_eq!(sd.manifest_hash, manifest_hash(&manifest));
@@ -1088,6 +1151,7 @@ mod tests {
             merkle_root: [1, 2, 3, 4, 5],
             note_id: 123_456_789,
             manifest_hash: [100, 200, 300, 400, 500],
+            proof_jam: None,
         };
         let note_data = data.to_note_data();
         let decoded = SettlementData::from_note_data(&note_data).unwrap();
@@ -1156,6 +1220,7 @@ mod tests {
             merkle_root: [1, 2, 3, 4, 5],
             note_id: 42,
             manifest_hash: [6, 7, 8, 9, 10],
+            proof_jam: None,
         };
         let mismatches = data.diff(&data);
         assert!(mismatches.is_empty(), "identical data should have no mismatches");
@@ -1169,6 +1234,7 @@ mod tests {
             merkle_root: [1, 2, 3, 4, 5],
             note_id: 42,
             manifest_hash: [6, 7, 8, 9, 10],
+            proof_jam: None,
         };
         let on_chain = SettlementData {
             version: 1,
@@ -1176,6 +1242,7 @@ mod tests {
             merkle_root: [10, 20, 30, 40, 50],
             note_id: 42,
             manifest_hash: [60, 70, 80, 90, 100],
+            proof_jam: None,
         };
         let mismatches = on_chain.diff(&expected);
         assert_eq!(mismatches.len(), 3, "should report hull_id, merkle_root, manifest_hash");
@@ -1192,6 +1259,7 @@ mod tests {
             merkle_root: [0; 5],
             note_id: 1,
             manifest_hash: [0; 5],
+            proof_jam: None,
         };
         let b = SettlementData {
             version: 2,
@@ -1235,6 +1303,7 @@ mod tests {
             merkle_root: [100, 200, 300, 400, 500],
             note_id: 42,
             manifest_hash: [10, 20, 30, 40, 50],
+            proof_jam: None,
         };
 
         // Encode to NoteData (JAM'd entries)
@@ -1423,5 +1492,97 @@ mod tests {
         };
         let hash = chain_hash_from_pb(&pb_hash);
         assert_eq!(hash.to_array(), [42, 0, 0, 0, 0]);
+    }
+
+    // --- STARK proof on-chain (v2 NoteData) ---
+
+    #[test]
+    fn settlement_v2_roundtrip_with_proof() {
+        let note = test_note();
+        let manifest = test_manifest();
+        let fake_proof = bytes::Bytes::from(
+            [0xDE, 0xAD, 0xBE, 0xEF, 0x42].iter().copied().cycle().take(500).collect::<Vec<u8>>()
+        );
+        let data = SettlementData::from_settlement(&note, &manifest, Some(fake_proof.clone()));
+        assert_eq!(data.version, 2);
+        assert!(data.proof_jam.is_some());
+
+        let note_data = data.to_note_data();
+        assert_eq!(note_data.iter().count(), 6); // 5 metadata + proof
+
+        let decoded = SettlementData::from_note_data(&note_data).unwrap();
+        assert_eq!(decoded.proof_jam, Some(fake_proof));
+        assert_eq!(decoded.version, data.version);
+        assert_eq!(decoded.hull_id, data.hull_id);
+        assert_eq!(decoded.note_id, data.note_id);
+        assert_eq!(decoded.merkle_root, data.merkle_root);
+        assert_eq!(decoded.manifest_hash, data.manifest_hash);
+    }
+
+    #[test]
+    fn v1_note_data_decodes_without_proof() {
+        // Simulate a v1 note: version=1, no proof entry
+        let entries = vec![
+            jam_u64_entry(KEY_VERSION, 1),
+            jam_u64_entry(KEY_HULL_ID, 7),
+            jam_tip5_entry(KEY_MERKLE_ROOT, &[0xAA; 5]),
+            jam_u64_entry(KEY_NOTE_ID, 42),
+            jam_tip5_entry(KEY_MANIFEST_HASH, &[0xBB; 5]),
+        ];
+        let note_data = NoteData::new(entries);
+        let decoded = SettlementData::from_note_data(&note_data).unwrap();
+        assert_eq!(decoded.version, 1);
+        assert!(decoded.proof_jam.is_none());
+    }
+
+    #[test]
+    fn v2_without_proof_roundtrip() {
+        let data = SettlementData::from_settlement(&test_note(), &test_manifest(), None);
+        assert_eq!(data.version, 2);
+        let note_data = data.to_note_data();
+        assert_eq!(note_data.iter().count(), 5); // no proof entry
+        let decoded = SettlementData::from_note_data(&note_data).unwrap();
+        assert!(decoded.proof_jam.is_none());
+        assert_eq!(decoded.hull_id, data.hull_id);
+    }
+
+    #[test]
+    fn display_shows_proof_info() {
+        let mut data = SettlementData {
+            version: 2,
+            hull_id: 7,
+            merkle_root: [0; 5],
+            note_id: 1,
+            manifest_hash: [0; 5],
+            proof_jam: Some(bytes::Bytes::from(vec![0u8; 1000])),
+        };
+        let s = format!("{data}");
+        assert!(s.contains("proof=1000B"), "should show proof size: {s}");
+
+        data.proof_jam = None;
+        let s = format!("{data}");
+        assert!(s.contains("proof=none"), "should show proof=none: {s}");
+    }
+
+    #[test]
+    fn diff_ignores_proof_jam() {
+        let a = SettlementData {
+            version: 2,
+            hull_id: 7,
+            merkle_root: [1, 2, 3, 4, 5],
+            note_id: 42,
+            manifest_hash: [6, 7, 8, 9, 10],
+            proof_jam: Some(bytes::Bytes::from(vec![1, 2, 3])),
+        };
+        let b = SettlementData {
+            version: 2,
+            hull_id: 7,
+            merkle_root: [1, 2, 3, 4, 5],
+            note_id: 42,
+            manifest_hash: [6, 7, 8, 9, 10],
+            proof_jam: None,
+        };
+        let mismatches = a.diff(&b);
+        assert!(mismatches.is_empty(), "diff should not compare proof_jam");
     }
 }

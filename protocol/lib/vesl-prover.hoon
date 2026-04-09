@@ -40,6 +40,7 @@
 ::  Bypasses puzzle-nock entirely.  The STARK constraints only check
 ::  correct Nock VM execution, not which program was run.
 ::
+::
 ++  prove-computation
   |=  [subject=* formula=*]
   ^-  prove-result:stark-prover
@@ -51,14 +52,17 @@
   ::
   =/  pre=preprocess-data
     p.pre-2.softed-constraints
-  ::  3. call generate-proof via prove-door from initialised core
+  ::  3. call generate-proof via prove-door directly from stark-prover
+  ::
+  ::  Bypass prover-core — the +<+< axis modification may corrupt
+  ::  the core.  prove-door takes pre as an explicit argument anyway.
   ::
   ::  Zero puzzle commitment — no PoW.  Vesl verifier identifies
   ::  the proof by the embedded [subject formula prod], not by
   ::  a puzzle derivation.
   ::
   %-  %~  generate-proof
-        prove-door:prover-core
+        prove-door:stark-prover
       :*  nock-common-v2
           funcs:compute-table-v2
           static:common:compute-table-v2

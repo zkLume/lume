@@ -63,6 +63,26 @@ pub fn jam_tip5_entry(key: &str, hash: &Tip5Hash) -> NoteDataEntry {
     NoteDataEntry::new(key.to_string(), jammed)
 }
 
+/// Create a NoteDataEntry with a jammed opaque byte blob.
+///
+/// The input `raw_bytes` (typically already-JAM'd proof bytes) are wrapped as a
+/// single `IndirectAtom` and then JAM'd. When the chain CUEs this blob it sees
+/// one atom — 1 leaf in the z-map tree — regardless of the byte length.
+pub fn jam_opaque_bytes_entry(key: &str, raw_bytes: &[u8]) -> NoteDataEntry {
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    let noun = if raw_bytes.is_empty() {
+        D(0)
+    } else {
+        unsafe {
+            let mut indirect = IndirectAtom::new_raw_bytes_ref(&mut slab, raw_bytes);
+            indirect.normalize_as_atom().as_noun()
+        }
+    };
+    slab.set_root(noun);
+    let jammed = slab.jam();
+    NoteDataEntry::new(key.to_string(), jammed)
+}
+
 /// Convert a u64 to a Nock noun, using IndirectAtom for values > DIRECT_MAX.
 ///
 /// Nock's `D()` constructor only handles values up to 2^63 - 1. Values above
@@ -122,6 +142,24 @@ pub fn find_hash_entry(data: &NoteData, key: &str) -> Result<Tip5Hash> {
         noun = cell.tail();
     }
     Ok(limbs)
+}
+
+/// Find a NoteDataEntry by key and decode its jammed value as raw bytes.
+///
+/// Inverse of `jam_opaque_bytes_entry`. CUEs the blob, extracts the atom,
+/// and returns the original byte content. The zero atom decodes to an empty vec.
+pub fn find_opaque_bytes_entry(data: &NoteData, key: &str) -> Result<Vec<u8>> {
+    let entry = find_entry(data, key)?;
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    slab.cue_into(entry.blob.clone())
+        .context("failed to cue NoteDataEntry blob")?;
+    let noun = unsafe { *slab.root() };
+    let atom = noun
+        .as_atom()
+        .map_err(|_| anyhow::anyhow!("expected atom for key '{key}', got cell"))?;
+    let bytes = atom.as_ne_bytes();
+    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+    Ok(bytes[..len].to_vec())
 }
 
 /// Find a NoteDataEntry by its key string.
@@ -191,6 +229,34 @@ mod tests {
     fn find_entry_missing_key() {
         let data = NoteData::new(vec![]);
         assert!(find_entry(&data, "nonexistent").is_err());
+    }
+
+    #[test]
+    fn opaque_bytes_roundtrip() {
+        let payload: Vec<u8> = (0..=255).collect();
+        let entry = jam_opaque_bytes_entry("proof", &payload);
+        let data = NoteData::new(vec![entry]);
+        let decoded = find_opaque_bytes_entry(&data, "proof").unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn opaque_bytes_empty_roundtrip() {
+        let entry = jam_opaque_bytes_entry("empty", &[]);
+        let data = NoteData::new(vec![entry]);
+        let decoded = find_opaque_bytes_entry(&data, "empty").unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn opaque_bytes_is_single_atom() {
+        let payload: Vec<u8> = [0xDE, 0xAD, 0xBE, 0xEF].iter().copied().cycle().take(1024).collect();
+        let entry = jam_opaque_bytes_entry("blob", &payload);
+        // CUE the blob and verify it's an atom (1 leaf), not a cell tree
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        slab.cue_into(entry.blob.clone()).unwrap();
+        let noun = unsafe { *slab.root() };
+        assert!(noun.is_atom(), "opaque bytes entry must CUE to a single atom");
     }
 
     #[test]

@@ -266,7 +266,7 @@ async fn fakenet_local_pipeline_produces_settlement() {
     println!("  Settle: {} effects", effects.len());
 
     // Build settlement data (what would go on-chain)
-    let settlement = SettlementData::from_settlement(&note, &manifest);
+    let settlement = SettlementData::from_settlement(&note, &manifest, None);
     assert_eq!(settlement.version, VESL_DATA_VERSION);
     assert_eq!(settlement.hull_id, 7);
     assert_eq!(settlement.note_id, 1);
@@ -579,6 +579,7 @@ async fn fakenet_settlement_notedata_comprehensive() {
             merkle_root: *root,
             note_id: *note_id,
             manifest_hash: *mhash,
+            proof_jam: None,
         };
 
         let note_data = data.to_note_data();
@@ -1170,6 +1171,7 @@ async fn fakenet_kernel_settlement_tx_roundtrip() {
             merkle_root: [0xAA, 0xBB, 0xCC, 0xDD, 0xEE],
             note_id: 42,
             manifest_hash: [0x11, 0x22, 0x33, 0x44, 0x55],
+            proof_jam: None,
         },
         fee: 3_000,
         signing_key: sk,
@@ -1313,6 +1315,7 @@ async fn fakenet_on_chain_settlement_roundtrip() {
         merkle_root: root,
         note_id: 1,
         manifest_hash: manifest_hash(&manifest),
+        proof_jam: None,
     };
     println!("    Expected: {expected_settlement}");
 
@@ -1537,6 +1540,7 @@ async fn fakenet_synthetic_settlement_confirmation() {
         merkle_root: root,
         note_id: 1,
         manifest_hash: manifest_hash(&manifest),
+        proof_jam: None,
     };
 
     println!("  Expected: {expected}");

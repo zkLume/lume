@@ -539,7 +539,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Manifest check: {}", if all_valid { "PASSED" } else { "FAILED" });
 
     // --- [9] On-chain settlement (optional, based on settlement mode) ---
-    let settlement_data = chain::SettlementData::from_settlement(&note, &manifest);
+    let settlement_data = chain::SettlementData::from_settlement(&note, &manifest, None);
     let mut tx_accepted = false;
     let mut tx_id_str = String::new();
 

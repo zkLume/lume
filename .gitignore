@@ -35,6 +35,10 @@ hoon/trivial.hoon
 .env.local
 vesl.toml
 
+# Docker (local dev only, not shipped)
+Dockerfile
+docker-compose.yml
+
 # Debug scaffolds
 setup_lab.sh
 protocol/lib/vesl-debug.hoon

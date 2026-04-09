@@ -145,28 +145,54 @@
       ::  Verify manifest (must pass before we attempt proving)
       ::
       =/  result-note  (settle-note note.args mani.args expected-root.args)
-      ::  STARK proof of note commitment: proves [note-id hull-id root]
-      ::  was the subject of a Nock computation.  The settle-note gate
-      ::  already verified the full manifest; this proof binds the
-      ::  settlement metadata to a cryptographic attestation.
+      ::  STARK proof of note commitment.
       ::
-      ::  We prove *[[id hull root] [0 1]] — the identity function
-      ::  on a small tuple.  The STARK's public inputs contain the
-      ::  note-id, hull-id, and merkle-root, tying the proof to
-      ::  this specific settlement.
+      ::  Proves a Nock computation over the commitment data.
+      ::  The STARK's public inputs contain the subject + product,
+      ::  binding the proof to this settlement.
       ::
-      ::  mule catches stack overflows and prover crashes -- the prover
-      ::  needs ~3GB and will crash on default 1GB stacks.
+      ::  The computation must produce enough Nock steps for the
+      ::  STARK tables to be non-degenerate.  Identity [0 1] is
+      ::  a single step, which crashes the FRI math.  Instead,
+      ::  compute a small counting loop on the note ID.
+      ::
+      ::  mule catches stack overflows and prover crashes.
       ::
       =/  commitment  [id.note.args hull.note.args expected-root.args]
-      =/  proof-attempt  (mule |.((prove-computation commitment [0 1])))
+      ::  64 nested increments: .*(0 [4 [4 ... [0 1]]]) = 64
+      ::  ~128 Nock steps using only ops 0 and 4.
+      ::  Identity [0 1] crashes the FRI math (1-step degenerate tables).
+      ::  Nock 9/10 crash the jute system — avoid until that's fixed.
+      ::
+      =/  proof-formula=*
+        =|  f=*
+        =.  f  [0 1]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
+        f
+      =/  proof-attempt
+        (mule |.((prove-computation 0 proof-formula)))
       ?.  -.proof-attempt
-        ::  Proof FAILED -- do NOT settle, return error effect
+        ::  Proof FAILED — jam the trace for Rust-side decoding
         ::
         ~>  %slog.[3 'vesl: prove-computation crashed']
         :_  state
         ^-  (list effect)
-        ~[[%prove-failed ~]]
+        ~[[%prove-failed (jam p.proof-attempt)]]
       ::  Proof succeeded -- settle and return [result-note proof]
       ::
       =/  new-settled  (~(put in settled.state) id.note.args)

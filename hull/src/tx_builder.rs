@@ -332,6 +332,7 @@ mod tests {
             merkle_root: [1, 2, 3, 4, 5],
             note_id: 42,
             manifest_hash: [6, 7, 8, 9, 10],
+            proof_jam: None,
         };
         let nd = settlement_to_note_data(&settlement);
         assert_eq!(nd.0.len(), 5);
@@ -352,6 +353,7 @@ mod tests {
             merkle_root: [100, 200, 300, 400, 500],
             note_id: 42,
             manifest_hash: [10, 20, 30, 40, 50],
+            proof_jam: None,
         };
         let note_data = settlement_to_note_data(&settlement);
 
@@ -411,6 +413,7 @@ mod tests {
             merkle_root: [100, 200, 300, 400, 500],
             note_id: 42,
             manifest_hash: [10, 20, 30, 40, 50],
+            proof_jam: None,
         };
         let note_data = settlement_to_note_data(&settlement);
 
