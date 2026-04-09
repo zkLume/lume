@@ -159,10 +159,17 @@
       ::  mule catches stack overflows and prover crashes.
       ::
       =/  commitment  [id.note.args hull.note.args expected-root.args]
-      ::  64 nested increments: .*(0 [4 [4 ... [0 1]]]) = 64
-      ::  ~128 Nock steps using only ops 0 and 4.
-      ::  Identity [0 1] crashes the FRI math (1-step degenerate tables).
-      ::  Nock 9/10 crash the jute system — avoid until that's fixed.
+      ::  STARK proof bound to the note id.
+      ::
+      ::  Subject = note id (small atom, fits in STARK field).
+      ::  Formula = 64 increments on [0 1].
+      ::  Product = (id + 64).
+      ::
+      ::  The STARK public inputs are [subject formula product].
+      ::  Hull and root are tip5 hashes (320-bit) which exceed the
+      ::  STARK field — they can't appear as subject or in any
+      ::  table row.  The full commitment binding is handled by
+      ::  settle-note validation (manifest + merkle root check).
       ::
       =/  proof-formula=*
         =|  f=*
@@ -185,7 +192,7 @@
         =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
         f
       =/  proof-attempt
-        (mule |.((prove-computation 0 proof-formula)))
+        (mule |.((prove-computation id.note.args proof-formula)))
       ?.  -.proof-attempt
         ::  Proof FAILED — jam the trace for Rust-side decoding
         ::
