@@ -201,6 +201,26 @@ struct ErrorBody {
     error: String,
 }
 
+#[derive(Serialize)]
+pub struct DiagSigHashResponse {
+    /// Did %diag-cue succeed (CUE without sieve)?
+    pub cue_ok: bool,
+    /// Did %diag-sieve succeed (CUE + sieve inside mule)?
+    pub sieve_ok: Option<bool>,
+    /// Which step crashed in %diag-hash? "ok", "fail-sig-hashable", or "fail-hash-hashable".
+    pub diag_hash_result: Option<String>,
+    /// Did %sig-hash succeed with 5 entries (no proof)?
+    pub sig_hash_5_ok: Option<bool>,
+    /// Did %sig-hash succeed with 6 entries (with proof)?
+    pub sig_hash_6_ok: Option<bool>,
+    /// Number of note-data entries in the test seeds.
+    pub note_data_entries: usize,
+    /// JAM'd seeds size in bytes.
+    pub seeds_jam_bytes: usize,
+    /// Error details if any step failed.
+    pub errors: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Input limits (V-C04)
 // ---------------------------------------------------------------------------
@@ -263,6 +283,7 @@ pub fn router(state: SharedState) -> Router {
         .route("/ingest", post(ingest_handler))
         .route("/query", post(query_handler))
         .route("/prove", post(prove_handler))
+        .route("/diag-sig-hash", get(diag_sig_hash_handler))
         .layer(
             tower::ServiceBuilder::new()
                 .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
@@ -1043,45 +1064,62 @@ async fn prove_handler(
             let pkh_b58 = pkh.to_base58();
 
             if let Some(chain_config) = st.settlement.chain_config() {
-            if let Ok(mut client) = chain::ChainClient::connect(chain_config).await {
-                let balance = client
-                    .get_balance_by_pkh(&pkh_b58, st.settlement.coinbase_timelock_min)
-                    .await;
+            match chain::ChainClient::connect(chain_config).await {
+                Ok(mut client) => {
+                    let balance = client
+                        .get_balance_by_pkh(&pkh_b58, st.settlement.coinbase_timelock_min)
+                        .await;
 
-                if let Ok(ref bal) = balance {
-                    let utxos = chain::extract_spendable_utxos(bal);
-                    if let Some(utxo) = utxos.iter().max_by_key(|u| u.amount) {
-                        let params = tx_builder::SettlementTxParams {
-                            input_name: nockchain_types::tx_engine::common::Name::new(
-                                utxo.name.clone(),
-                                utxo.last_name.clone(),
-                            ),
-                            input_note_hash: utxo.last_name.clone(),
-                            input_amount: utxo.amount,
-                            is_coinbase: true,
-                            coinbase_timelock_min: st.settlement.coinbase_timelock_min,
-                            source_hash: nockchain_types::tx_engine::common::Hash::from_limbs(
-                                &[0, 0, 0, 0, 0],
-                            ),
-                            recipient_pkh: pkh,
-                            settlement: settlement_data,
-                            fee: st.settlement.tx_fee,
-                            signing_key: *sk,
-                        };
+                    match balance {
+                        Ok(ref bal) => {
+                            let utxos = chain::extract_spendable_utxos(bal);
+                            eprintln!("[prove] chain: {} spendable UTXOs", utxos.len());
+                            if let Some(utxo) = utxos.iter().max_by_key(|u| u.amount) {
+                                let params = tx_builder::SettlementTxParams {
+                                    input_name: nockchain_types::tx_engine::common::Name::new(
+                                        utxo.name.clone(),
+                                        utxo.last_name.clone(),
+                                    ),
+                                    input_note_hash: utxo.last_name.clone(),
+                                    input_amount: utxo.amount,
+                                    is_coinbase: true,
+                                    coinbase_timelock_min: st.settlement.coinbase_timelock_min,
+                                    source_hash: nockchain_types::tx_engine::common::Hash::from_limbs(
+                                        &[0, 0, 0, 0, 0],
+                                    ),
+                                    recipient_pkh: pkh,
+                                    settlement: settlement_data,
+                                    fee: st.settlement.tx_fee,
+                                    signing_key: *sk,
+                                };
 
-                        if let Ok(raw_tx) =
-                            tx_builder::build_settlement_tx(&mut st.app, &params).await
-                        {
-                            let id_b58 = raw_tx.id.to_base58();
-                            tx_id = Some(id_b58.clone());
-                            match client.submit_and_wait(raw_tx, &id_b58).await {
-                                Ok(accepted) => tx_accepted = Some(accepted),
-                                Err(_) => tx_accepted = Some(false),
+                                match tx_builder::build_settlement_tx(&mut st.app, &params).await {
+                                    Ok(raw_tx) => {
+                                        let id_b58 = raw_tx.id.to_base58();
+                                        eprintln!("[prove] tx built: {}", id_b58);
+                                        tx_id = Some(id_b58.clone());
+                                        match client.submit_and_wait(raw_tx, &id_b58).await {
+                                            Ok(accepted) => {
+                                                eprintln!("[prove] tx accepted: {}", accepted);
+                                                tx_accepted = Some(accepted);
+                                            }
+                                            Err(e) => {
+                                                eprintln!("[prove] tx submit error: {e}");
+                                                tx_accepted = Some(false);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => eprintln!("[prove] tx build error: {e}"),
+                                }
                             }
                         }
+                        Err(e) => eprintln!("[prove] balance query error: {e}"),
                     }
                 }
+                Err(e) => eprintln!("[prove] chain connect error: {e}"),
             }
+            } else {
+                eprintln!("[prove] no chain config");
             }
         }
     }
@@ -1100,6 +1138,199 @@ async fn prove_handler(
         prove_error: None,
         tx_id,
         tx_accepted,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic endpoint — %sig-hash crash isolation
+// ---------------------------------------------------------------------------
+
+/// Fire diagnostic pokes to isolate the %sig-hash sieve crash.
+///
+/// Constructs mock settlement seeds with 6 note-data entries (including proof)
+/// and fires %diag-cue, %diag-sieve, and %sig-hash in sequence.
+async fn diag_sig_hash_handler(
+    State(state): State<SharedState>,
+) -> Result<Json<DiagSigHashResponse>, (StatusCode, Json<ErrorBody>)> {
+    use nockchain_types::tx_engine::common::{Hash, Nicks};
+    use nockchain_types::tx_engine::v1::tx::{Seed, Seeds};
+
+    let mut errors = Vec::new();
+
+    // Build mock settlement with proof (6 entries)
+    let mock_proof = bytes::Bytes::from(vec![0xABu8; 256]);
+    let settlement = chain::SettlementData {
+        version: 2,
+        hull_id: 7,
+        merkle_root: [100, 200, 300, 400, 500],
+        note_id: 42,
+        manifest_hash: [10, 20, 30, 40, 50],
+        proof_jam: Some(mock_proof),
+    };
+    let note_data = tx_builder::settlement_to_note_data(&settlement);
+    let note_data_entries = note_data.0.len();
+
+    let seed = Seed {
+        output_source: None,
+        lock_root: Hash::from_limbs(&[1, 2, 3, 4, 5]),
+        note_data,
+        gift: Nicks(62_536),
+        parent_hash: Hash::from_limbs(&[10, 20, 30, 40, 50]),
+    };
+    let seeds = Seeds(vec![seed]);
+    let fee = Nicks(3000);
+
+    // Get JAM size for diagnostics
+    let seeds_jam_bytes = match tx_builder::jam_seeds_for_diag(&seeds) {
+        Ok(b) => b.len(),
+        Err(e) => {
+            errors.push(format!("jam_seeds failed: {e}"));
+            0
+        }
+    };
+
+    let mut st = state.inner.lock().await;
+
+    // 1. %diag-cue — CUE without sieve
+    let cue_ok = match tx_builder::kernel_diag_cue(&mut st.app, &seeds).await {
+        Ok(effects) => {
+            eprintln!("[diag] cue: {} effects returned", effects.len());
+            !effects.is_empty()
+        }
+        Err(e) => {
+            errors.push(format!("diag-cue: {e}"));
+            false
+        }
+    };
+
+    // 2. %diag-sieve — CUE + sieve inside mule
+    let sieve_ok = if cue_ok {
+        match tx_builder::kernel_diag_sieve(&mut st.app, &seeds).await {
+            Ok(effects) => {
+                if let Some(effect) = effects.first() {
+                    let root = unsafe { *effect.root() };
+                    // Effect is [%diag-sieve result ...]. Check if result is %ok.
+                    if let Ok(cell) = root.as_cell() {
+                        if let Ok(inner) = cell.tail().as_cell() {
+                            let tag = inner.head();
+                            let is_ok = tag.as_atom().map(|a| a.as_u64() == Ok(nockvm_macros::tas!(b"ok") as u64)).unwrap_or(false);
+                            if !is_ok {
+                                errors.push("diag-sieve: sieve FAILED (;;(seeds:txv1 ...) crashed)".into());
+                            }
+                            eprintln!("[diag] sieve: ok={is_ok}");
+                            Some(is_ok)
+                        } else {
+                            errors.push("diag-sieve: unexpected effect shape".into());
+                            Some(false)
+                        }
+                    } else {
+                        errors.push("diag-sieve: effect is not a cell".into());
+                        Some(false)
+                    }
+                } else {
+                    errors.push("diag-sieve: no effects (poke crashed before mule)".into());
+                    Some(false)
+                }
+            }
+            Err(e) => {
+                errors.push(format!("diag-sieve: {e}"));
+                Some(false)
+            }
+        }
+    } else {
+        None
+    };
+
+    // 3. %diag-hash — isolate crash in sig-hashable vs hash-hashable
+    let diag_hash_result = match tx_builder::kernel_diag_hash(&mut st.app, &seeds, &fee).await {
+        Ok(effects) => {
+            if let Some(effect) = effects.first() {
+                let root = unsafe { *effect.root() };
+                if let Ok(cell) = root.as_cell() {
+                    if let Ok(inner) = cell.tail().as_cell() {
+                        let tag = inner.head();
+                        let tag_str = if let Ok(a) = tag.as_atom() {
+                            if a.as_u64() == Ok(nockvm_macros::tas!(b"ok") as u64) {
+                                "ok".to_string()
+                            } else if a.as_u64() == Ok(nockvm_macros::tas!(b"fail") as u64) {
+                                "fail".to_string()
+                            } else {
+                                format!("unknown-tag-{:?}", a.as_u64())
+                            }
+                        } else {
+                            "non-atom-tag".to_string()
+                        };
+                        eprintln!("[diag] hash: {tag_str}");
+                        if tag_str != "ok" {
+                            errors.push(format!("diag-hash: {tag_str}"));
+                        }
+                        Some(tag_str)
+                    } else { Some("bad-shape".to_string()) }
+                } else { Some("not-cell".to_string()) }
+            } else {
+                errors.push("diag-hash: no effects (poke crashed before mule)".into());
+                Some("no-effects".to_string())
+            }
+        }
+        Err(e) => {
+            errors.push(format!("diag-hash: {e}"));
+            Some(format!("error: {e}"))
+        }
+    };
+
+    // 4. %sig-hash with 5 entries (no proof) — control test
+    let settlement_no_proof = chain::SettlementData {
+        version: 1,
+        hull_id: 7,
+        merkle_root: [100, 200, 300, 400, 500],
+        note_id: 42,
+        manifest_hash: [10, 20, 30, 40, 50],
+        proof_jam: None,
+    };
+    let nd5 = tx_builder::settlement_to_note_data(&settlement_no_proof);
+    let seed5 = Seed {
+        output_source: None,
+        lock_root: Hash::from_limbs(&[1, 2, 3, 4, 5]),
+        note_data: nd5,
+        gift: Nicks(62_536),
+        parent_hash: Hash::from_limbs(&[10, 20, 30, 40, 50]),
+    };
+    let seeds5 = Seeds(vec![seed5]);
+
+    let sig_hash_5_ok = match tx_builder::kernel_sig_hash(&mut st.app, &seeds5, &fee).await {
+        Ok(_hash) => {
+            eprintln!("[diag] sig-hash (5 entries, no proof): OK");
+            Some(true)
+        }
+        Err(e) => {
+            errors.push(format!("sig-hash-5: {e}"));
+            eprintln!("[diag] sig-hash (5 entries): FAILED — {e}");
+            Some(false)
+        }
+    };
+
+    // 5. %sig-hash with 6 entries (with proof) — the crash case
+    let sig_hash_ok = match tx_builder::kernel_sig_hash(&mut st.app, &seeds, &fee).await {
+        Ok(_hash) => {
+            eprintln!("[diag] sig-hash (6 entries, with proof): OK");
+            Some(true)
+        }
+        Err(e) => {
+            errors.push(format!("sig-hash-6: {e}"));
+            eprintln!("[diag] sig-hash (6 entries): FAILED — {e}");
+            Some(false)
+        }
+    };
+
+    Ok(Json(DiagSigHashResponse {
+        cue_ok,
+        sieve_ok,
+        diag_hash_result,
+        sig_hash_5_ok,
+        sig_hash_6_ok: sig_hash_ok,
+        note_data_entries,
+        seeds_jam_bytes,
+        errors,
     }))
 }
 

@@ -33,6 +33,28 @@
   %-  ~(. verify test-mode)
   [proof override verifier-eny s f]
 ::
+::  +verify-settlement: STARK verify + root/hull binding
+::
+++  verify-settlement
+  =|  test-mode=_|
+  |=  [=proof override=(unit (list term)) verifier-eny=@ s=* f=* expected-root=@ expected-hull=@]
+  ^-  ?
+  =/  nock-common=_nock-common-v0-v1
+    ?-  version.proof
+      %0  nock-common-v0-v1
+      %1  nock-common-v0-v1
+      %2  nock-common-v2
+    ==
+  =/  pre=preprocess-data
+    ?-  version.proof
+      %0  p.pre-0-1.prep.stark-config
+      %1  p.pre-0-1.prep.stark-config
+      %2  p.pre-2.prep.stark-config
+    ==
+  =/  vsd  ~(verify-settlement verify-door [nock-common pre])
+  %-  ~(. vsd test-mode)
+  [proof override verifier-eny s f expected-root expected-hull]
+::
 ++  verify-door
   ~/  %vesl-verify-door
   |_  [nock-common=_nock-common-v0-v1 pre=preprocess-data]
@@ -501,6 +523,27 @@
     ::~&  %deep-codeword-matches
     ::~&  %proof-verified
     [commitment nonce]:puzzle
+  ::
+  ::  +verify-settlement: STARK verify + commitment binding check
+  ::
+  ::  Runs full STARK verification, then checks that the proof
+  ::  stream's header/nonce match the expected root/hull digests.
+  ::  Returns %.y only if both the STARK math and binding pass.
+  ::
+  ++  verify-settlement
+    =|  test-mode=_|
+    |=  [=proof override=(unit (list term)) verifier-eny=@ s=* f=* expected-root=@ expected-hull=@]
+    ^-  ?
+    =/  args  [proof override verifier-eny test-mode s f]
+    =/  result  (mule |.((verify-inner args)))
+    ?.  -.result
+      %.n
+    =/  vr=verify-result  +.result
+    =/  root-digest=noun-digest:tip5  (atom-to-digest:tip5 expected-root)
+    =/  hull-digest=noun-digest:tip5  (atom-to-digest:tip5 expected-hull)
+    ?&  =(commitment.vr root-digest)
+        =(nonce.vr hull-digest)
+    ==
     ::
   ++  compute-base-widths
     ~/  %compute-base-widths

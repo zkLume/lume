@@ -21,6 +21,7 @@
 /-  *vesl
 /+  *vesl-logic
 /+  *vesl-prover
+/+  *vesl-merkle
 /=  *  /common/wrapper
 /=  txv1  /common/tx-engine-1
 ::
@@ -44,6 +45,9 @@
       [%prove payload=@]
       [%sig-hash seeds-jam=@ fee=@]
       [%tx-id spends-jam=@]
+      [%diag-cue seeds-jam=@]
+      [%diag-sieve seeds-jam=@]
+      [%diag-hash seeds-jam=@ fee=@]
   ==
 --
 |%
@@ -145,54 +149,52 @@
       ::  Verify manifest (must pass before we attempt proving)
       ::
       =/  result-note  (settle-note note.args mani.args expected-root.args)
-      ::  STARK proof of note commitment.
+      ::  Phase 3: field-safe STARK execution on manifest data
       ::
-      ::  Proves a Nock computation over the commitment data.
-      ::  The STARK's public inputs contain the subject + product,
-      ::  binding the proof to this settlement.
+      ::  Decompose all text fields to 7-byte belt lists, then
+      ::  fold to a single atom < Goldilocks prime (sum mod p).
+      ::  Cell subjects crash the STARK memory table — the table
+      ::  decomposes the full subject tree and can't represent
+      ::  cell nodes as field elements.
       ::
-      ::  The computation must produce enough Nock steps for the
-      ::  STARK tables to be non-degenerate.  Identity [0 1] is
-      ::  a single step, which crashes the FRI math.  Instead,
-      ::  compute a small counting loop on the note ID.
+      ::  Root/hull bound via Fiat-Shamir header/nonce (Phase 1).
+      ::  Belt digest bound via STARK execution trace.
       ::
-      ::  mule catches stack overflows and prover crashes.
+      ::  Formula: 64 nested increments (Nock 0/4 only).
+      ::  Subject: belt-digest (single atom < p).
+      ::  Product: belt-digest + 64.
       ::
-      =/  commitment  [id.note.args hull.note.args expected-root.args]
-      ::  STARK proof bound to the note id.
+      =/  qb=(list @)  (split-to-belts query.mani.args)
+      =/  ob=(list @)  (split-to-belts output.mani.args)
+      =/  pb=(list @)  (split-to-belts prompt.mani.args)
+      =/  chunk-belts=(list @)
+        =|  acc=(list @)
+        =/  res  results.mani.args
+        |-
+        ?~  res  (flop acc)
+        $(acc (weld (flop (split-to-belts dat.chunk.i.res)) acc), res t.res)
+      =/  all-belts=(list @)
+        (weld qb (weld ob (weld pb chunk-belts)))
+      ::  fold all belts to single atom < p
+      ::  p = 2^64 - 2^32 + 1 (Goldilocks prime)
       ::
-      ::  Subject = note id (small atom, fits in STARK field).
-      ::  Formula = 64 increments on [0 1].
-      ::  Product = (id + 64).
+      =/  p=@  (add (sub (bex 64) (bex 32)) 1)
+      =/  belt-digest=@
+        %+  roll  all-belts
+        |=  [a=@ b=@]
+        (mod (add a b) p)
+      ::  64 nested increments on [0 1]
+      ::  known-working pattern: atom subject + Nock 0/4 only
       ::
-      ::  The STARK public inputs are [subject formula product].
-      ::  Hull and root are tip5 hashes (320-bit) which exceed the
-      ::  STARK field — they can't appear as subject or in any
-      ::  table row.  The full commitment binding is handled by
-      ::  settle-note validation (manifest + merkle root check).
-      ::
-      =/  proof-formula=*
-        =|  f=*
-        =.  f  [0 1]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]  =.  f  [4 f]
-        f
+      =/  fs-formula=*
+        =/  f=*  [0 1]
+        =|  i=@
+        |-
+        ?:  =(i 64)  f
+        $(f [4 f], i +(i))
       =/  proof-attempt
-        (mule |.((prove-computation id.note.args proof-formula)))
+        %-  mule  |.
+        (prove-computation belt-digest fs-formula expected-root.args hull.note.args)
       ?.  -.proof-attempt
         ::  Proof FAILED — jam the trace for Rust-side decoding
         ::
@@ -232,6 +234,44 @@
       :_  state
       ^-  (list effect)
       ~[[%tx-id result]]
+      ::
+      ::  %diag-cue — CUE seeds JAM without sieve, report noun shape.
+      ::    Diagnostic: isolates CUE from type validation.
+      ::
+        %diag-cue
+      =/  raw=*  (cue seeds-jam.u.act)
+      =/  is-cell=?  ?=(^ raw)
+      :_  state
+      ^-  (list effect)
+      ~[[%diag-cue is-cell raw]]
+      ::
+      ::  %diag-sieve — CUE + sieve inside mule, catch crash.
+      ::    Diagnostic: determines if ;;(seeds:txv1 ...) is the crash site.
+      ::
+        %diag-sieve
+      =/  raw=*  (cue seeds-jam.u.act)
+      =/  attempt  (mule |.(;;(seeds:txv1 raw)))
+      :_  state
+      ^-  (list effect)
+      ?:  -.attempt
+        ~[[%diag-sieve %ok ~]]
+      ~[[%diag-sieve %fail (jam p.attempt)]]
+      ::
+      ::  %diag-hash — full sig-hash computation inside mule
+      ::
+        %diag-hash
+      =/  sds=seeds:txv1  ;;(seeds:txv1 (cue seeds-jam.u.act))
+      =/  attempt
+        %-  mule  |.
+        %-  hash-hashable:tip5
+        [(sig-hashable:seeds:txv1 sds) leaf+fee.u.act]
+      ?:  -.attempt
+        :_  state
+        ^-  (list effect)
+        ~[[%diag-hash %ok p.attempt]]
+      :_  state
+      ^-  (list effect)
+      ~[[%diag-hash %fail (jam p.attempt)]]
     ==
   --
 --

@@ -301,16 +301,32 @@ fn find_hash_entry(data: &NoteData, key: &str) -> Result<Tip5Hash> {
     Ok(limbs)
 }
 
-/// Create a NoteDataEntry with a jammed opaque byte blob (double-JAM strategy).
+/// Create a NoteDataEntry with a jammed opaque byte blob.
+///
+/// Encodes `raw_bytes` as a Nock list of 7-byte little-endian atoms so that
+/// every leaf is < 2^56 < Goldilocks prime.  This lets the tx-engine's
+/// `hashable-noun` walker produce field-safe `leaf+` nodes — a raw large
+/// atom would crash `hash-noun-varlen` in ztd/three.hoon.
 fn jam_opaque_bytes_entry(key: &str, raw_bytes: &[u8]) -> NoteDataEntry {
     let mut slab: NounSlab<NockJammer> = NounSlab::new();
     let noun = if raw_bytes.is_empty() {
         D(0)
     } else {
-        unsafe {
-            let mut indirect = IndirectAtom::new_raw_bytes_ref(&mut slab, raw_bytes);
-            indirect.normalize_as_atom().as_noun()
+        // Split into 7-byte chunks (same convention as vesl-merkle.hoon split-to-belts)
+        let chunks: Vec<u64> = raw_bytes
+            .chunks(7)
+            .map(|c| {
+                let mut buf = [0u8; 8];
+                buf[..c.len()].copy_from_slice(c);
+                u64::from_le_bytes(buf)
+            })
+            .collect();
+        // Build Nock list from back: [chunk0 [chunk1 [... [chunkN 0]]]]
+        let mut list_noun = D(0); // nil terminator
+        for &val in chunks.iter().rev() {
+            list_noun = T(&mut slab, &[D(val), list_noun]);
         }
+        list_noun
     };
     slab.set_root(noun);
     let jammed = slab.jam();
@@ -318,18 +334,46 @@ fn jam_opaque_bytes_entry(key: &str, raw_bytes: &[u8]) -> NoteDataEntry {
 }
 
 /// Find a NoteDataEntry by key and decode its jammed value as raw bytes.
+///
+/// Handles both the new belt-list format (Nock list of 7-byte atoms) and the
+/// legacy single-atom format for backward compatibility.
 fn find_opaque_bytes_entry(data: &NoteData, key: &str) -> Result<Vec<u8>> {
     let entry = find_entry(data, key)?;
     let mut slab: NounSlab<NockJammer> = NounSlab::new();
     slab.cue_into(entry.blob.clone())
         .context("failed to cue NoteDataEntry blob")?;
     let noun = unsafe { *slab.root() };
-    let atom = noun
-        .as_atom()
-        .map_err(|_| anyhow::anyhow!("expected atom for key '{key}', got cell"))?;
-    let bytes = atom.as_ne_bytes();
-    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
-    Ok(bytes[..len].to_vec())
+
+    if let Ok(atom) = noun.as_atom() {
+        // Legacy format or empty: single atom
+        let bytes = atom.as_ne_bytes();
+        let len = bytes
+            .iter()
+            .rposition(|&b| b != 0)
+            .map_or(0, |pos| pos + 1);
+        Ok(bytes[..len].to_vec())
+    } else {
+        // Belt-list format: Nock list of 7-byte LE chunks
+        let mut result = Vec::new();
+        let mut cursor = noun;
+        while let Ok(cell) = cursor.as_cell() {
+            let chunk_atom = cell
+                .head()
+                .as_atom()
+                .map_err(|_| anyhow::anyhow!("belt-list chunk is not an atom for key '{key}'"))?;
+            let val = chunk_atom
+                .as_u64()
+                .map_err(|_| anyhow::anyhow!("belt-list chunk exceeds u64 for key '{key}'"))?;
+            result.extend_from_slice(&val.to_le_bytes()[..7]);
+            cursor = cell.tail();
+        }
+        // Trim trailing zero padding from the last (possibly short) chunk.
+        // Safe for JAM'd data which always ends with a non-zero byte.
+        while result.last() == Some(&0) {
+            result.pop();
+        }
+        Ok(result)
+    }
 }
 
 /// Find a NoteDataEntry by its key string.

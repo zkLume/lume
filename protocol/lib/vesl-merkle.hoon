@@ -24,6 +24,16 @@
   =/  chunk  (end [3 7] a)
   $(a (rsh [3 7] a), belts [chunk belts])
 ::
+::  +belts-to-atom: reconstruct atom from 7-byte LE belt list
+::
+::  Inverse of split-to-belts.  Concatenates each belt as a
+::  7-byte little-endian block via rep.
+::
+++  belts-to-atom
+  |=  belts=(list @)
+  ^-  @
+  (rep [3 7] belts)
+::
 ::  +hash-leaf: tip5 hash of raw leaf data
 ::
 ::  Splits atom into 7-byte field-element chunks, prepends count,

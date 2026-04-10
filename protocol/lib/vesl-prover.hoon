@@ -6,10 +6,14 @@
 ::  arbitrary Nock computations (e.g. settle-note execution).
 ::
 ::  This prover:
-::  1. Accepts [subject formula] directly
+::  1. Accepts [subject formula root hull] directly
 ::  2. Traces execution via fink:fock
-::  3. Generates a STARK proof via the same constraint system
-::  4. Embeds a zero puzzle commitment (verifier skips puzzle check)
+::  3. Packs root/hull as tip5 digests into proof-stream header/nonce
+::  4. Generates a STARK proof via the same constraint system
+::
+::  Phase 3: subject is belt-decomposed manifest data (all atoms < p).
+::  Formula is a hand-crafted Nock 0-8 expression embedded in the
+::  subject for self-reference via Nock 2 recursion.
 ::
 /=  compute-table-v2  /common/v2/table/prover/compute
 /=  memory-table-v2  /common/v2/table/prover/memory
@@ -40,26 +44,33 @@
 ::  Bypasses puzzle-nock entirely.  The STARK constraints only check
 ::  correct Nock VM execution, not which program was run.
 ::
+::  root and hull are packed into the proof stream's header and nonce
+::  fields as tip5 digests.  These are Fiat-Shamir bound — modifying
+::  them after proof generation invalidates all FRI challenges.
 ::
 ++  prove-computation
-  |=  [subject=* formula=*]
+  |=  [subject=* formula=* root=@ hull=@]
   ^-  prove-result:stark-prover
   ::  1. trace the nock execution
   ::
   =/  [prod=* return=fock-return]
     (fink:fock [subject formula])
-  ::  2. extract v2 preprocessed constraints
+  ::  2. decompose root and hull into field-safe tip5 digests
+  ::
+  =/  root-digest=noun-digest:tip5  (atom-to-digest:tip5 root)
+  =/  hull-digest=noun-digest:tip5  (atom-to-digest:tip5 hull)
+  ::  3. extract v2 preprocessed constraints
   ::
   =/  pre=preprocess-data
     p.pre-2.softed-constraints
-  ::  3. call generate-proof via prove-door directly from stark-prover
+  ::  4. call generate-proof via prove-door directly from stark-prover
   ::
   ::  Bypass prover-core — the +<+< axis modification may corrupt
   ::  the core.  prove-door takes pre as an explicit argument anyway.
   ::
-  ::  Zero puzzle commitment — no PoW.  Vesl verifier identifies
-  ::  the proof by the embedded [subject formula prod], not by
-  ::  a puzzle derivation.
+  ::  header = root digest, nonce = hull digest.
+  ::  These become the first proof-stream push [%puzzle ...],
+  ::  absorbed into the Fiat-Shamir sponge before challenge derivation.
   ::
   %-  %~  generate-proof
         prove-door:stark-prover
@@ -71,8 +82,8 @@
           pre
       ==
   :*  %2
-      *noun-digest:tip5
-      *noun-digest:tip5
+      root-digest
+      hull-digest
       0
       subject
       formula

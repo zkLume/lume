@@ -233,6 +233,69 @@ pub async fn kernel_tx_id(
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostic pokes — isolate crash in %sig-hash pipeline
+// ---------------------------------------------------------------------------
+
+/// Expose seeds JAM for diagnostic use (returns raw bytes).
+pub fn jam_seeds_for_diag(seeds: &Seeds) -> anyhow::Result<bytes::Bytes> {
+    jam_seeds_manual(seeds)
+}
+
+/// Fire `%diag-cue` to CUE the seeds JAM without applying the type sieve.
+/// Returns the kernel effects (contains `[%diag-cue is-cell raw-noun]`).
+pub async fn kernel_diag_cue(
+    app: &mut NockApp,
+    seeds: &Seeds,
+) -> anyhow::Result<Vec<NounSlab>> {
+    let seeds_jammed = jam_seeds_manual(seeds)?;
+    let mut poke_slab: NounSlab = NounSlab::new();
+    let tag = make_tas(&mut poke_slab, "diag-cue").as_noun();
+    let seeds_atom = bytes_to_atom(&mut poke_slab, &seeds_jammed);
+    let cmd = T(&mut poke_slab, &[tag, seeds_atom]);
+    poke_slab.set_root(cmd);
+    app.poke(SystemWire.to_wire(), poke_slab)
+        .await
+        .map_err(|e| anyhow::anyhow!("diag-cue poke failed: {e:?}"))
+}
+
+/// Fire `%diag-hash` to test sig-hashable + hash-hashable inside mules.
+/// Returns effects: `[%diag-hash %ok hash]`, `[%diag-hash %fail-sig-hashable ...]`,
+/// or `[%diag-hash %fail-hash-hashable ...]`.
+pub async fn kernel_diag_hash(
+    app: &mut NockApp,
+    seeds: &Seeds,
+    fee: &nockchain_types::tx_engine::common::Nicks,
+) -> anyhow::Result<Vec<NounSlab>> {
+    let seeds_jammed = jam_seeds_manual(seeds)?;
+    let mut poke_slab: NounSlab = NounSlab::new();
+    let tag = make_tas(&mut poke_slab, "diag-hash").as_noun();
+    let seeds_atom = bytes_to_atom(&mut poke_slab, &seeds_jammed);
+    let fee_noun = D(fee.0 as u64);
+    let cmd = T(&mut poke_slab, &[tag, seeds_atom, fee_noun]);
+    poke_slab.set_root(cmd);
+    app.poke(SystemWire.to_wire(), poke_slab)
+        .await
+        .map_err(|e| anyhow::anyhow!("diag-hash poke failed: {e:?}"))
+}
+
+/// Fire `%diag-sieve` to CUE and apply `;;(seeds:txv1 ...)` inside a mule.
+/// Returns effects: `[%diag-sieve %ok ~]` or `[%diag-sieve %fail trace-jam]`.
+pub async fn kernel_diag_sieve(
+    app: &mut NockApp,
+    seeds: &Seeds,
+) -> anyhow::Result<Vec<NounSlab>> {
+    let seeds_jammed = jam_seeds_manual(seeds)?;
+    let mut poke_slab: NounSlab = NounSlab::new();
+    let tag = make_tas(&mut poke_slab, "diag-sieve").as_noun();
+    let seeds_atom = bytes_to_atom(&mut poke_slab, &seeds_jammed);
+    let cmd = T(&mut poke_slab, &[tag, seeds_atom]);
+    poke_slab.set_root(cmd);
+    app.poke(SystemWire.to_wire(), poke_slab)
+        .await
+        .map_err(|e| anyhow::anyhow!("diag-sieve poke failed: {e:?}"))
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -400,6 +463,111 @@ mod tests {
             "jam_seeds_manual must produce identical bytes to Seeds::to_noun → JAM. \
              Divergence causes sig-hash mismatch → v1-spend-1-lock-failed (ISSUE-006)."
         );
+    }
+
+    /// Verify `jam_seeds_manual` succeeds with 6 NoteData entries (proof present).
+    ///
+    /// FINDING: `Seeds::to_noun` (via `ZSet::try_from_items`) panics with
+    /// `AtomTooLarge` when proof data is present — the ZSet hashing walks
+    /// the entire seed noun tree and chokes on large atoms. The manual JAM
+    /// path bypasses ZSet and works. This test confirms the manual path
+    /// produces valid JAM for the 6-entry case.
+    #[test]
+    fn jam_seeds_manual_succeeds_with_proof() {
+        // Mock proof blob (~500 bytes, same pattern as diag-reproduce)
+        let mock_proof = bytes::Bytes::from(
+            [0xDE, 0xAD, 0xBE, 0xEF, 0x42]
+                .iter()
+                .copied()
+                .cycle()
+                .take(500)
+                .collect::<Vec<u8>>(),
+        );
+        let settlement = SettlementData {
+            version: 2, // v2 includes proof
+            hull_id: 7,
+            merkle_root: [100, 200, 300, 400, 500],
+            note_id: 42,
+            manifest_hash: [10, 20, 30, 40, 50],
+            proof_jam: Some(mock_proof),
+        };
+        let note_data = settlement_to_note_data(&settlement);
+        assert_eq!(
+            note_data.0.len(),
+            6,
+            "should have 6 entries (5 metadata + proof)"
+        );
+
+        let seed = Seed {
+            output_source: None,
+            lock_root: Hash::from_limbs(&[1, 2, 3, 4, 5]),
+            note_data,
+            gift: Nicks(62_536),
+            parent_hash: Hash::from_limbs(&[10, 20, 30, 40, 50]),
+        };
+        let seeds = Seeds(vec![seed]);
+
+        // Manual JAM must succeed — this is the path used for sig-hash
+        let manual_jam = jam_seeds_manual(&seeds).expect("manual JAM should succeed with proof");
+        assert!(
+            manual_jam.len() > 100,
+            "JAM'd seeds with proof should be non-trivial (got {} bytes)",
+            manual_jam.len()
+        );
+
+        // Note: Seeds::to_noun (standard path) panics with AtomTooLarge here.
+        // The ZSet hashing walks the full seed noun tree and can't handle
+        // large atoms in the proof blob value. jam_seeds_manual bypasses
+        // ZSet entirely, which is why it was written as a manual path.
+    }
+
+    /// Belt-list encoding round-trips: encode proof → note-data → decode matches original.
+    #[test]
+    fn proof_belt_encoding_round_trips() {
+        let patterns: Vec<Vec<u8>> = vec![
+            // Short (< 7 bytes)
+            vec![0x01, 0x02, 0x03],
+            // Exactly 7 bytes (one full chunk)
+            vec![0xDE, 0xAD, 0xBE, 0xEF, 0x42, 0x13, 0x37],
+            // 500 bytes (simulates real proof blob)
+            [0xDE, 0xAD, 0xBE, 0xEF, 0x42]
+                .iter()
+                .copied()
+                .cycle()
+                .take(500)
+                .collect(),
+            // Empty
+            vec![],
+        ];
+        for original in &patterns {
+            let settlement = SettlementData {
+                version: 2,
+                hull_id: 7,
+                merkle_root: [100, 200, 300, 400, 500],
+                note_id: 42,
+                manifest_hash: [10, 20, 30, 40, 50],
+                proof_jam: if original.is_empty() {
+                    None
+                } else {
+                    Some(bytes::Bytes::from(original.clone()))
+                },
+            };
+            let note_data = settlement.to_note_data();
+            let decoded = SettlementData::from_note_data(&note_data)
+                .expect("round-trip decode should succeed");
+            match (&settlement.proof_jam, &decoded.proof_jam) {
+                (None, None) => {}
+                (Some(orig), Some(got)) => {
+                    assert_eq!(
+                        orig.as_ref(),
+                        got.as_ref(),
+                        "proof bytes mismatch for input of length {}",
+                        original.len()
+                    );
+                }
+                _ => panic!("proof_jam presence mismatch"),
+            }
+        }
     }
 
     /// A1b diagnostic: Same comparison for `jam_spends_manual` vs `Spends::to_noun`.
