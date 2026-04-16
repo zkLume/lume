@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map_err(|e| format!("Failed to read out.jam: {}", e))?;
 
     let mut app: NockApp =
-        boot::setup(&kernel, Some(cli), &[], "{{project_name}}", None).await?;
+        boot::setup(&kernel, cli, &[], "{{project_name}}", None).await?;
 
     // Register data under name "doc-v1"
     // The kernel hashes the data with SHA-256 and stores the hash

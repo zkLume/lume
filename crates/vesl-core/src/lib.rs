@@ -31,7 +31,7 @@ pub use types::{
     Chunk, Manifest, Note, NockZkp, NoteState, Retrieval,
     Tip5Hash, ProofNode, TIP5_ZERO, MerkleTree,
     ChainClient, ChainConfig, WalletClient, WalletConfig,
-    format_tip5, hash_leaf, hash_pair, verify_proof,
+    format_tip5, hash_leaf, hash_pair, tip5_to_atom_le_bytes, verify_proof,
     GraftPayload, IntentVerifier, NounSlab,
     ForgePayload, LeafWithProof,
 };

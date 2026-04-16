@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fs;
 
 use vesl_core::{Guard, Mint, Tip5Hash, tip5_to_atom_le_bytes};
-use nock_noun_rs::{jam_to_bytes, make_atom_in, make_cord_in, make_tag_in, new_stack};
+use nock_noun_rs::{jam_to_bytes, make_atom_in, make_tag_in, new_stack};
 use nockapp::kernel::boot;
 use nockapp::noun::slab::NounSlab;
 use nockapp::wire::{SystemWire, Wire};
@@ -16,46 +16,54 @@ async fn main() -> Result<(), Box<dyn Error>> {
     boot::init_default_tracing(&cli);
 
     let kernel =
-        fs::read("out.jam").map_err(|e| format!("Failed to read out.jam: {}", e))?;
+        fs::read("out.jam").map_err(|e| format!("Failed to read out.jam: {e}"))?;
 
     let mut app: NockApp =
-        boot::setup(&kernel, cli, &[], "{{project_name}}", None).await?;
+        boot::setup(&kernel, cli, &[], "my-nockapp", None).await?;
 
-    // --- step 1: submit reports (domain logic) ---
+    // --- step 1: domain poke ---
 
-    let reports = [
-        ("Q3 Revenue", "Revenue up 12% YoY. APAC expansion on track."),
-        ("Risk Assessment", "Supply chain exposure reduced. New vendor onboarded."),
-        ("Compliance Audit", "SOC2 Type II passed. Zero critical findings."),
+    let items = [
+        "first item added by the scaffold",
+        "second item for demonstration",
     ];
 
-    println!("=== step 1: submitting reports ===\n");
-    for (title, body) in &reports {
+    println!("=== step 1: domain pokes ===\n");
+    for item in &items {
         let mut slab = NounSlab::new();
-        let tag = D(tas!(b"submit"));
-        let t = make_cord_in(&mut slab, title);
-        let b = make_cord_in(&mut slab, body);
-        let poke = T(&mut slab, &[tag, t, b]);
+        let tag = D(tas!(b"my-action"));
+        let val = make_tag_in(&mut slab, item);
+        let poke = T(&mut slab, &[tag, val]);
         slab.set_root(poke);
 
         let effects = app.poke(SystemWire.to_wire(), slab).await?;
-        print_effects(&effects, &format!("submit '{}'", title));
+        print_effects(&effects, &format!("my-action '{}'", &item[..30.min(item.len())]));
     }
 
-    // --- step 2: commit report bodies to Merkle tree ---
+    // --- step 2: Mint — build Merkle tree ---
 
     println!("\n=== step 2: Mint — building Merkle tree ===\n");
     let mut mint = Mint::new();
-    let leaves: Vec<&[u8]> = reports.iter().map(|(_, body)| body.as_bytes()).collect();
-    mint.commit(&leaves);
-
-    let root: Tip5Hash = mint.root().expect("committed");
+    let leaves: Vec<&[u8]> = items.iter().map(|i| i.as_bytes()).collect();
+    let root: Tip5Hash = mint.commit(&leaves);
     println!("  root: {:?}", root);
-    println!("  leaves: {}", reports.len());
+    println!("  leaves: {}", items.len());
 
-    // --- step 3: register root with kernel ---
+    // --- step 3: Guard — verify proofs locally ---
 
-    println!("\n=== step 3: Graft — registering root ===\n");
+    println!("\n=== step 3: Guard — local verification ===\n");
+    let mut guard = Guard::new();
+    guard.register_root(root).unwrap();
+
+    for (i, item) in items.iter().enumerate() {
+        let proof = mint.proof(i).unwrap();
+        let valid = guard.check(item.as_bytes(), &proof, &root);
+        println!("  item {i}: valid={valid}");
+    }
+
+    // --- step 4: register root with kernel ---
+
+    println!("\n=== step 4: Graft — registering root ===\n");
     let hull_id: u64 = 1;
     {
         let mut slab = NounSlab::new();
@@ -66,36 +74,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         slab.set_root(poke);
 
         let effects = app.poke(SystemWire.to_wire(), slab).await?;
-        print_effects(&effects, "register");
+        print_effects(&effects, "vesl-register");
     }
 
-    // --- step 4: verify all proofs locally with Guard ---
-
-    println!("\n=== step 4: Guard — local verification ===\n");
-    let mut guard = Guard::new();
-    guard.register_root(root).unwrap();
-
-    for (i, (title, body)) in reports.iter().enumerate() {
-        let proof = mint.proof(i).unwrap();
-        let valid = guard.check(body.as_bytes(), &proof, &root);
-        println!("  {} '{}': {}", if valid { "ok" } else { "FAIL" }, title, valid);
-    }
-
-    // --- step 5: settle a report ---
+    // --- step 5: settle ---
     //
-    // Build a graft-payload noun, jam it, and poke %vesl-settle.
-    // The kernel's Graft verifies via the hash gate, then transitions
-    // the note to %settled. Replay protection prevents double-settlement.
-    //
-    // For the hash gate to pass, we need a single-leaf tree where
-    // root == hash-leaf(data). Multi-leaf roots need a manifest gate.
+    // Build a graft-payload, jam it, send as %vesl-settle.
+    // The hash gate needs a single-leaf tree (root == hash-leaf(data)).
 
     println!("\n=== step 5: settlement ===\n");
-
     let mut single_mint = Mint::new();
-    let single_root = single_mint.commit(&[reports[0].1.as_bytes()]);
+    let single_root = single_mint.commit(&[items[0].as_bytes()]);
 
-    // Register the single-leaf root under a separate hull
+    // Register the single-leaf root under a second hull
     let settle_hull: u64 = 2;
     {
         let mut slab = NounSlab::new();
@@ -107,9 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         app.poke(SystemWire.to_wire(), slab).await?;
     }
 
-    // Build and send %vesl-settle
-    //
-    // graft-payload: [note=[id=@ hull=@ root=@ state=[%pending ~]] data=* expected-root=@]
+    // Build graft-payload: [note=[id hull root [%pending ~]] data expected-root]
     {
         let mut slab = NounSlab::new();
         let rb = tip5_to_atom_le_bytes(&single_root);
@@ -121,10 +110,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let state = T(&mut slab, &[pending_tag, D(0)]);
         let note = T(&mut slab, &[note_id, note_hull, note_root, state]);
 
-        let data = make_atom_in(&mut slab, reports[0].1.as_bytes());
+        let data = make_atom_in(&mut slab, items[0].as_bytes());
         let exp_root = make_atom_in(&mut slab, &rb);
         let payload_noun = T(&mut slab, &[note, data, exp_root]);
 
+        // Jam the payload and send as [%vesl-settle jammed]
         let payload_bytes = {
             let mut stack = new_stack();
             jam_to_bytes(&mut stack, payload_noun)
@@ -138,7 +128,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         print_effects(&effects, "vesl-settle");
     }
 
-    // Replay protection: same note ID should produce %vesl-error
+    // --- step 6: replay protection ---
+
+    println!("\n=== step 6: replay protection ===\n");
     {
         let mut slab = NounSlab::new();
         let rb = tip5_to_atom_le_bytes(&single_root);
@@ -148,7 +140,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             make_atom_in(&mut slab, &rb),
             T(&mut slab, &[make_tag_in(&mut slab, "pending"), D(0)]),
         ]);
-        let data = make_atom_in(&mut slab, reports[0].1.as_bytes());
+        let data = make_atom_in(&mut slab, items[0].as_bytes());
         let exp_root = make_atom_in(&mut slab, &rb);
         let payload_noun = T(&mut slab, &[note, data, exp_root]);
 
@@ -165,26 +157,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         print_effects(&effects, "replay (expect error)");
     }
 
-    // --- step 6: tampered data detection ---
-
-    println!("\n=== step 6: tampered data detection ===\n");
-    let proof = mint.proof(0);
-    let tampered = guard.check(b"Revenue down 50%. CEO arrested.", &proof, &root);
-    println!("  tampered report: valid={}", tampered);
-
-    let bad_root: Tip5Hash = [0xDEAD, 0, 0, 0, 0];
-    let unreg = guard.check(reports[0].1.as_bytes(), &proof, &bad_root);
-    println!("  unregistered root: valid={}", unreg);
-
     println!("\n=== done ===");
-    println!("\nThe Settle pattern: submit -> commit -> register -> settle.");
-    println!("Replay rejected. Your domain logic stays clean.");
     Ok(())
 }
 
 fn print_effects(effects: &[NounSlab], label: &str) {
     if effects.is_empty() {
-        println!("  [{}] (no effects)", label);
+        println!("  [{label}] (no effects)");
         return;
     }
     for effect in effects.iter() {
@@ -195,7 +174,7 @@ fn print_effects(effects: &[NounSlab], label: &str) {
                 let tag_str = std::str::from_utf8(tag_bytes)
                     .unwrap_or("?")
                     .trim_end_matches('\0');
-                println!("  [{}] effect: %{}", label, tag_str);
+                println!("  [{label}] effect: %{tag_str}");
             }
         }
     }

@@ -1,8 +1,16 @@
 # How to Graft Mint onto Your NockApp
 
+> **Quick start:** Copy [`graft-scaffold/`](./graft-scaffold/) and customize. All Hoon deps are bundled, the graft wiring is done, and `src/main.rs` demonstrates the full lifecycle (domain poke, Mint, Guard, register, verify, settle). No `$NOCK_HOME` needed for compilation.
+
 You have a NockApp. It does something useful. Now you want tamper-evident data commitment — Merkle roots, inclusion proofs, the works. You don't want to write hash functions or proof verification logic.
 
-The Graft pattern attaches Vesl's verification infrastructure to your kernel as a composable library. Ten minutes. Three lines of poke delegation. No verification code written.
+The Graft pattern attaches Vesl's verification infrastructure to your kernel as a composable library. Three lines of poke delegation. No verification code written.
+
+## Prerequisites
+
+- **Nightly Rust** — nockvm requires nightly features (`cargo +nightly build`)
+- **hoonc** in your PATH (built from the nockchain monorepo)
+- **`$NOCK_HOME`** set to your nockchain monorepo root (only needed if not using bundled deps)
 
 ## What You Get
 
@@ -33,6 +41,16 @@ hoon/
 ```
 
 These live in `protocol/sur/` and `protocol/lib/` in the Vesl repo. For non-RAG gates, only `vesl-graft.hoon` and `vesl-merkle.hoon` are required — see [Custom Gates](#custom-gates--beyond-rag) below.
+
+For self-contained compilation (no `$NOCK_HOME`), also copy the tip5 primitives:
+
+```
+hoon/
+  common/zeke.hoon        # tip5 hash chain entry point
+  common/ztd/             # tip5 math tables (all 8 files)
+```
+
+These live in `proof-log/hoon/common/` in the Vesl repo. The [`graft-scaffold`](./graft-scaffold/) template bundles all of these.
 
 ## Step 2: Import the Graft
 
@@ -132,13 +150,19 @@ let root = mint.root().expect("committed");
 Build a `%vesl-register` poke and send it to the kernel:
 
 ```rust
-use nock_noun_rs::make_tag_in;
+use vesl_core::tip5_to_atom_le_bytes;
+use nock_noun_rs::{make_atom_in, make_tag_in};
 use nockapp::noun::slab::NounSlab;
 use nockvm::noun::{D, T};
 
 let mut slab = NounSlab::new();
 let tag = make_tag_in(&mut slab, "vesl-register");
-let poke = T(&mut slab, &[tag, D(hull_id), D(root_atom)]);
+// tip5_to_atom_le_bytes encodes the [u64; 5] hash as the base-p atom
+// that matches Hoon's digest-to-atom encoding. Do NOT use flat LE
+// byte concatenation — it produces a different atom.
+let root_bytes = tip5_to_atom_le_bytes(&root);
+let root_atom = make_atom_in(&mut slab, &root_bytes);
+let poke = T(&mut slab, &[tag, D(hull_id), root_atom]);
 slab.set_root(poke);
 
 app.poke(SystemWire.to_wire(), slab).await?;
@@ -163,15 +187,57 @@ for (i, doc) in documents.iter().enumerate() {
 
 Guard verification is local — no kernel, no network, no async. Pure math.
 
+## Step 11: Build and Send a Settlement Payload
+
+To settle a note, build a `graft-payload` noun, jam it, and poke `%vesl-settle`:
+
+```rust
+use vesl_core::tip5_to_atom_le_bytes;
+use nock_noun_rs::{jam_to_bytes, make_atom_in, make_tag_in, new_stack};
+use nockvm::noun::{D, T};
+
+let mut slab = NounSlab::new();
+let rb = tip5_to_atom_le_bytes(&root);
+
+// Build the graft-payload noun:
+//   [note=[id=@ hull=@ root=@ state=[%pending ~]] data=* expected-root=@]
+let note_root = make_atom_in(&mut slab, &rb);
+let pending_tag = make_tag_in(&mut slab, "pending");
+let state = T(&mut slab, &[pending_tag, D(0)]);
+let note = T(&mut slab, &[D(note_id), D(hull_id), note_root, state]);
+
+let data = make_atom_in(&mut slab, leaf_bytes);
+let exp_root = make_atom_in(&mut slab, &rb);
+let payload_noun = T(&mut slab, &[note, data, exp_root]);
+
+// Jam the payload and send as [%vesl-settle jammed]
+let payload_bytes = {
+    let mut stack = new_stack();
+    jam_to_bytes(&mut stack, payload_noun)
+};
+let jammed = make_atom_in(&mut slab, &payload_bytes);
+let tag = make_tag_in(&mut slab, "vesl-settle");
+let poke = T(&mut slab, &[tag, jammed]);
+slab.set_root(poke);
+
+app.poke(SystemWire.to_wire(), slab).await?;
+```
+
+The same pattern works for `%vesl-verify` (soft verification, no state change). See [`graft-scaffold/src/main.rs`](./graft-scaffold/src/main.rs) for a complete working example.
+
 ## Compile
 
-The kernel needs `$NOCK_HOME/hoon/` for tip5 primitives (zeke.hoon):
+If your template bundles zeke.hoon + ztd/ locally (like `graft-scaffold`):
+
+```bash
+hoonc --new hoon/app/app.hoon hoon/
+```
+
+Otherwise, point to the nockchain Hoon library:
 
 ```bash
 hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
 ```
-
-Or use the pre-compiled `out.jam` from the graft-mint template (1.5MB).
 
 ## The Tiers
 
@@ -260,8 +326,9 @@ The Graft is domain-agnostic. The examples above use a RAG verification gate (ca
 
 ## Reference Templates
 
+- [`graft-scaffold`](./graft-scaffold/) — **Start here.** Full lifecycle with bundled deps and CUSTOMIZE markers
 - [`graft-mint`](./graft-mint/) — Mint + Guard with RAG verification gate
-- [`graft-settle`](./graft-settle/) — Full settlement lifecycle with RAG gate
+- [`graft-settle`](./graft-settle/) — Full settlement lifecycle with settlement poke
 - [`graft-intent`](./graft-intent/) — Custom hash gate, no RAG types
 
 ~

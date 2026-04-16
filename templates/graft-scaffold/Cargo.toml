@@ -1,0 +1,22 @@
+[package]
+name = "my-nockapp"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "my-nockapp"
+path = "src/main.rs"
+
+[dependencies]
+# NockVM — adjust paths to your nockchain clone
+nockapp = { path = "../../nockchain/crates/nockapp", default-features = false }
+nockvm = { path = "../../nockchain/crates/nockvm/rust/nockvm" }
+nockvm_macros = { path = "../../nockchain/crates/nockvm/rust/nockvm_macros" }
+
+# Vesl SDK — adjust paths to your vesl clone
+vesl-core = { path = "../../crates/vesl-core" }
+nock-noun-rs = { path = "../../crates/nock-noun-rs" }
+nockchain-tip5-rs = { path = "../../crates/nockchain-tip5-rs" }
+
+tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"

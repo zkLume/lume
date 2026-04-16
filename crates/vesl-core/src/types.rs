@@ -5,7 +5,8 @@
 
 // tip5 primitives
 pub use nockchain_tip5_rs::{
-    format_tip5, hash_leaf, hash_pair, verify_proof, MerkleTree, ProofNode, Tip5Hash, TIP5_ZERO,
+    format_tip5, hash_leaf, hash_pair, tip5_to_atom_le_bytes, verify_proof, MerkleTree, ProofNode,
+    Tip5Hash, TIP5_ZERO,
 };
 
 // Chain/wallet clients (for Settle/Forge users)

@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::fs;
 
-use vesl_core::{Guard, Mint, Tip5Hash};
-use nock_noun_rs::make_tag_in;
+use vesl_core::{Guard, Mint, Tip5Hash, tip5_to_atom_le_bytes};
+use nock_noun_rs::{make_atom_in, make_tag_in};
 use nockapp::kernel::boot;
 use nockapp::noun::slab::NounSlab;
 use nockapp::wire::{SystemWire, Wire};
@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fs::read("out.jam").map_err(|e| format!("Failed to read out.jam: {}", e))?;
 
     let mut app: NockApp =
-        boot::setup(&kernel, Some(cli), &[], "{{project_name}}", None).await?;
+        boot::setup(&kernel, cli, &[], "{{project_name}}", None).await?;
 
     // --- domain: store some notes ---
 
@@ -59,10 +59,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     {
         let mut slab = NounSlab::new();
         let tag = make_tag_in(&mut slab, "vesl-register");
-        // Root is [u64; 5] — encode each limb. For the kernel poke,
-        // we pass the root as a single flat atom (digest-to-atom encoding).
-        // For simplicity, pass the first limb as a stand-in.
-        let root_atom = D(root[0]);
+        let root_bytes = tip5_to_atom_le_bytes(&root);
+        let root_atom = make_atom_in(&mut slab, &root_bytes);
         let poke = T(&mut slab, &[tag, D(hull_id), root_atom]);
         slab.set_root(poke);
 
