@@ -1,53 +1,59 @@
 # Vesl
 
-Verifiable RAG on Nockchain.
-
-Ingest data into a tip5 Merkle tree. Retrieve chunks with inclusion proofs. Verify prompt integrity in a Hoon kernel. Settle on-chain. The root is the only thing that touches the chain.
+A verification SDK for Nockchain. Four kernels — **mint** (commit), **guard** (verify), **settle** (on-chain), **forge** (STARK-prove) — with Rust facades in `vesl-core`, graft templates for adding them to an existing NockApp, and `hull-rag` as a reference implementation.
 
 
 ## Demo
 
 ```bash
-# Local pipeline — no chain required, runs in ~30 seconds
+# Reference pipeline (hull-rag) — no chain required, runs in ~30 seconds
 ./scripts/demo.sh --no-chain
 
 # Full pipeline with live fakenet settlement
 ./scripts/demo.sh
 ```
 
-The demo ingests documents, retrieves against a query, verifies in the Hoon kernel, and settles. `--no-chain` skips chain interaction so you can see the pipeline without booting a fakenet.
+Ingest documents, retrieve against a query, verify in the kernel, settle. `--no-chain` skips chain interaction.
 
 
 ## Structure
 
 ```
-protocol/                 Hoon — the trust anchor
-  sur/vesl.hoon             types
-  lib/rag-logic.hoon       verification gates (tip5 Merkle, prompt integrity)
-  lib/vesl-kernel.hoon      NockApp kernel (poke/peek/load)
-  lib/vesl-prover.hoon      STARK proof generation
-  lib/vesl-verifier.hoon    STARK proof verification
-  tests/                    14 compile-time assertion tests
+protocol/                       Hoon source
+  lib/mint-kernel.hoon            commit data → root
+  lib/guard-kernel.hoon           verify inclusion proofs
+  lib/settle-kernel.hoon          on-chain settlement
+  lib/forge-kernel.hoon           STARK-prove arbitrary computation
+  lib/vesl-merkle.hoon            tip5 Merkle math
+  lib/vesl-prover.hoon            STARK proof generation
+  lib/vesl-verifier.hoon          STARK proof verification
+  lib/vesl-graft.hoon             gate-agnostic composition
+  lib/vesl-test.hoon              compile-time assertions
+  sur/vesl.hoon                   types
 
-hull/                   Rust — the off-chain pipeline
-  src/merkle.rs             tip5 Merkle tree (cross-runtime aligned with Hoon)
-  src/chain.rs              on-chain settlement + confirmation
-  src/api.rs                HTTP: /ingest, /query, /prove, /status
-  src/tx_builder.rs         settlement transaction construction
-  src/signing.rs            Schnorr signing
-  src/ingest.rs             document chunking
-  src/llm.rs                LLM integration (Ollama, trait-based)
-  tests/                    pipeline, adversarial, prover, fakenet (37 E2E tests)
+kernels/                        compiled kernel crates (one per JAM)
+  mint/  guard/  settle/  forge/  vesl/
 
-crates/                   Standalone crates (usable without Vesl)
-  nock-noun-rs/             Nock noun construction from Rust
-  nockchain-tip5-rs/        tip5 Merkle tree + hash functions
+crates/                         Rust crates
+  vesl-core/                      SDK — Mint/Guard/Settle/Forge facades
+  nock-noun-rs/                   Nock noun construction from Rust
+  nockchain-tip5-rs/              standalone tip5 Merkle tree + hashing
+  nockchain-client-rs/            chain RPC client
 
-kernels/vesl/             kernel compilation crate
-assets/vesl.jam           compiled kernel
-demo/docs/                sample documents for the demo pipeline
-scripts/                  demo + fakenet harness
-hoon/                     symlink tree (setup-hoon-tree.sh creates links to $NOCK_HOME)
+hull-rag/                       reference implementation — verifiable RAG
+  src/                            ingest, retrieve, kernel verify, settle
+  tests/                          37 E2E tests (pipeline, adversarial, fakenet)
+
+templates/                      starter NockApps + graft templates
+  counter/  data-registry/  settle-report/    teach the core patterns
+  graft-scaffold/  graft-mint/  graft-settle/  graft-intent/
+                                  drop verification onto an existing NockApp
+  GRAFTING.md                     long-form integration guide
+
+assets/                         compiled kernel JAMs
+demo/                           sample documents for the hull-rag pipeline
+scripts/                        demo + fakenet harness
+hoon/                           symlink tree (setup-hoon-tree.sh links $NOCK_HOME)
 ```
 
 
@@ -84,26 +90,21 @@ Two ways in, depending on what you're building.
 
 Use Docker if you want to run the Vesl pipeline (ingest, query, settle) or hack on the Vesl codebase itself. The container ships hoonc, nockchain, hull-rag, and all compiled kernels. Nothing to install on the host.
 
+Pull the prebuilt image from [Docker Hub](https://hub.docker.com/r/zkvesl/vesl):
+
 ```bash
-docker build -t zkvesl/vesl:latest - < Dockerfile
+docker pull zkvesl/vesl:latest
 docker run -it zkvesl/vesl:latest
 make demo-local
 ```
 
+Or build it locally from the `Dockerfile` in this repo: `docker build -t zkvesl/vesl:latest - < Dockerfile`.
+
 ### NockUp — add verification to your NockApp
 
-Use NockUp if you already have a NockApp and want to graft Vesl's Merkle commitment and proof verification onto it. You don't need the full Vesl repo — just the SDK crate and the Hoon libraries.
+If you're building a NockApp with `nockup` and want to graft Vesl's verification primitives onto it, head to [vesl-nockup](https://github.com/zkVesl/vesl-nockup). That repo has pre-resolved git deps, a `graft-inject` CLI that auto-wires your kernel, a `vesl-test` harness, and a full walkthrough — none of which you need to clone this monorepo for.
 
-```bash
-nockup package add zkvesl/vesl-graft            # bundles the Hoon libs
-graft-inject hoon/app/app.hoon                  # auto-wires your kernel
-# add Rust crates to Cargo.toml (nockup does not manage Rust deps):
-#   vesl-core         = { git = "https://github.com/zkVesl/vesl-nockup" }
-#   nock-noun-rs      = { git = "https://github.com/zkVesl/vesl-nockup" }
-#   nockchain-tip5-rs = { git = "https://github.com/zkVesl/vesl-nockup" }
-```
-
-See [vesl-nockup](https://github.com/zkVesl/vesl-nockup) for the full walkthrough, the `graft-inject` tool, and the `vesl-test` harness. For Docker users or developers integrating by hand, [GRAFTING.md](templates/GRAFTING.md) is the long-form guide (10 steps, 3 lines of poke delegation).
+For developers integrating by hand or from Docker, [GRAFTING.md](templates/GRAFTING.md) is the long-form guide.
 
 ### Manual Setup
 
