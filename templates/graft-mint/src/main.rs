@@ -74,16 +74,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("\n=== Guard: verifying proofs ===\n");
     let mut guard = Guard::new();
-    guard.register_root(root);
+    guard.register_root(root).unwrap();
 
     for (i, (key, val)) in notes.iter().enumerate() {
-        let proof = mint.proof(i);
+        let proof = mint.proof(i).unwrap();
         let valid = guard.check(val.as_bytes(), &proof, &root);
         println!("  {} '{}': {}", if valid { "ok" } else { "FAIL" }, key, valid);
     }
 
     // tampered data should fail
-    let proof = mint.proof(0);
+    let proof = mint.proof(0).unwrap();
     let tampered = guard.check(b"tampered data", &proof, &root);
     println!("  tampered:       {}", tampered);
 

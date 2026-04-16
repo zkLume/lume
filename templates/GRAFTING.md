@@ -152,10 +152,10 @@ Note: `make_tag_in` handles tags longer than 8 bytes (like `vesl-register`) that
 use vesl_core::Guard;
 
 let mut guard = Guard::new();
-guard.register_root(root);
+guard.register_root(root).unwrap();
 
 for (i, doc) in documents.iter().enumerate() {
-    let proof = mint.proof(i);
+    let proof = mint.proof(i).unwrap();
     let valid = guard.check(doc.as_bytes(), &proof, &root);
     // valid is true if the document is bound to the Merkle root
 }

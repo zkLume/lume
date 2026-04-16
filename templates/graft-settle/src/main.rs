@@ -72,10 +72,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("\n=== step 4: Guard — local verification ===\n");
     let mut guard = Guard::new();
-    guard.register_root(root);
+    guard.register_root(root).unwrap();
 
     for (i, (title, body)) in reports.iter().enumerate() {
-        let proof = mint.proof(i);
+        let proof = mint.proof(i).unwrap();
         let valid = guard.check(body.as_bytes(), &proof, &root);
         println!("  {} '{}': {}", if valid { "ok" } else { "FAIL" }, title, valid);
     }

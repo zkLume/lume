@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("\n=== step 4: local proof verification ===\n");
     for (i, intent) in intents.iter().enumerate() {
-        let proof = mint.proof(i);
+        let proof = mint.proof(i).unwrap();
         let leaf_hash = vesl_core::hash_leaf(intent.as_bytes());
         println!(
             "  intent {}: leaf_hash={:?}, proof_len={}",
