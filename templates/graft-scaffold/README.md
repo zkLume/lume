@@ -55,3 +55,9 @@ Cargo.toml                  dependencies (local paths)
 Adjust the paths in `Cargo.toml` to point to your local clones of nockchain and vesl.
 
 Requires nightly Rust (`cargo +nightly build`).
+
+## Using nockup?
+
+See [vesl-nockup](https://github.com/zkVesl/vesl-nockup) for a nockup-packaged version: pre-resolved git deps (no sibling repos required), a `graft-inject` CLI that auto-wires your kernel, and a `vesl-test` harness with a standard lifecycle suite.
+
+~

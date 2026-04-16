@@ -95,12 +95,15 @@ make demo-local
 Use NockUp if you already have a NockApp and want to graft Vesl's Merkle commitment and proof verification onto it. You don't need the full Vesl repo — just the SDK crate and the Hoon libraries.
 
 ```bash
-nockup package add zkvesl/vesl-graft zkvesl/vesl-merkle
-# then add vesl-core to Cargo.toml:
-# vesl-core = { git = "https://github.com/zkVesl/vesl", path = "crates/vesl-core" }
+nockup package add zkvesl/vesl-graft            # bundles the Hoon libs
+graft-inject hoon/app/app.hoon                  # auto-wires your kernel
+# add Rust crates to Cargo.toml (nockup does not manage Rust deps):
+#   vesl-core         = { git = "https://github.com/zkVesl/vesl-nockup" }
+#   nock-noun-rs      = { git = "https://github.com/zkVesl/vesl-nockup" }
+#   nockchain-tip5-rs = { git = "https://github.com/zkVesl/vesl-nockup" }
 ```
 
-See [GRAFTING.md](templates/GRAFTING.md) for the full integration walkthrough (10 steps, 3 lines of poke delegation).
+See [vesl-nockup](https://github.com/zkVesl/vesl-nockup) for the full walkthrough, the `graft-inject` tool, and the `vesl-test` harness. For Docker users or developers integrating by hand, [GRAFTING.md](templates/GRAFTING.md) is the long-form guide (10 steps, 3 lines of poke delegation).
 
 ### Manual Setup
 

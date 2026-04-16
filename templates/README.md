@@ -50,6 +50,8 @@ Copy a template to `~/.nockup/templates/`, create your `nockapp.toml`, and scaff
 nockup project init
 ```
 
+> **Grafting onto a new nockup project?** See [vesl-nockup](https://github.com/zkVesl/vesl-nockup) — packages that integrate with `nockup package add`, plus a `graft-inject` tool that auto-wires the graft into your `hoon/app/app.hoon`.
+
 ### Standalone
 
 ```bash

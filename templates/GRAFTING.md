@@ -1,5 +1,7 @@
 # How to Graft Mint onto Your NockApp
 
+> **nockup users:** Install via `nockup package add zkvesl/vesl-graft` (bundles the Hoon libs), then run `graft-inject hoon/app/app.hoon` to auto-wire the kernel. Rust crates go into your `Cargo.toml` manually — nockup doesn't manage Rust deps. The manual steps below are for developers using Docker or integrating by hand. See [vesl-nockup](https://github.com/zkVesl/vesl-nockup).
+
 > **Quick start:** Copy [`graft-scaffold/`](./graft-scaffold/) and customize. All Hoon deps are bundled, the graft wiring is done, and `src/main.rs` demonstrates the full lifecycle (domain poke, Mint, Guard, register, verify, settle). No `$NOCK_HOME` needed for compilation.
 
 You have a NockApp. It does something useful. Now you want tamper-evident data commitment — Merkle roots, inclusion proofs, the works. You don't want to write hash functions or proof verification logic.
