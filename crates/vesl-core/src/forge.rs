@@ -9,7 +9,7 @@
 //! (including prover jet registration) is the hull's responsibility.
 
 use anyhow::Result;
-use nock_noun_rs::{make_atom_in, make_list_in, make_loobean, make_tag_in, jam_to_bytes, new_stack, NounSlab, T};
+use nock_noun_rs::{atom_from_u64, make_atom_in, make_list_in, make_loobean, make_tag_in, jam_to_bytes, new_stack, NounSlab, T};
 use nockchain_tip5_rs::tip5_to_atom_le_bytes;
 
 use crate::types::ForgePayload;
@@ -96,8 +96,9 @@ fn build_forge_payload_in(
     payload: &ForgePayload,
 ) -> nockvm::noun::Noun {
     // Note: [id=@ hull=@ root=@ state=[%pending ~]]
-    let id = nockvm::noun::D(payload.note.id);
-    let hull = nockvm::noun::D(payload.note.hull);
+    // id/hull can exceed DIRECT_MAX — route through atom_from_u64.
+    let id = atom_from_u64(slab, payload.note.id);
+    let hull = atom_from_u64(slab, payload.note.hull);
     let root_bytes = tip5_to_atom_le_bytes(&payload.note.root);
     let root_noun = make_atom_in(slab, &root_bytes);
     let state_tag = make_tag_in(slab, "pending");

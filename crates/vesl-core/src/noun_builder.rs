@@ -5,7 +5,7 @@
 //! (manifest, settlement payload, settle/prove pokes) stay in the domain hull.
 
 use nock_noun_rs::{
-    make_atom, make_atom_in, make_cord, make_loobean,
+    atom_from_u64, make_atom, make_atom_in, make_cord, make_loobean,
     Cell, D, NounSlab, NockStack, Noun, NounAllocator, T,
 };
 use nockchain_tip5_rs::tip5_to_atom_le_bytes;
@@ -85,8 +85,9 @@ pub fn pending_note_to_noun(stack: &mut NockStack, note: &Note) -> Noun {
         matches!(note.state, NoteState::Pending),
         "settlement payload requires %pending note"
     );
-    let id = D(note.id);
-    let hull = D(note.hull);
+    // id/hull can exceed DIRECT_MAX (hash-derived for replay protection).
+    let id = atom_from_u64(stack, note.id);
+    let hull = atom_from_u64(stack, note.hull);
     let root = hash_to_noun(stack, &note.root);
     let tag = make_atom(stack, b"pending");
     let state = Cell::new(stack, tag, D(0)).as_noun(); // [%pending ~]

@@ -530,6 +530,10 @@ mod http_api {
     use hull_rag::retrieve::KeywordRetriever;
 
     async fn test_router() -> (axum::Router, api::SharedState, TempDir) {
+        // Tests run without VESL_API_KEY — disable auth so assertions see
+        // 400/404/etc. rather than the middleware's 401.
+        api::check_auth_config(true).expect("disable auth");
+
         let tmp = TempDir::new().expect("create temp dir");
         let cli = boot::Cli::parse_from(["test", "--new"]);
         let app: NockApp = boot::setup(
@@ -551,6 +555,7 @@ mod http_api {
                 top_k: 2,
                 retriever: Box::new(KeywordRetriever),
                 note_counter: 0,
+                recent_notes: std::collections::VecDeque::new(),
                 settlement: hull_rag::config::SettlementConfig::local(),
                 stack_size: nockapp::kernel::boot::NockStackSize::Normal,
                 output_dir: tmp.path().to_path_buf(),

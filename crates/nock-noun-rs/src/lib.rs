@@ -159,6 +159,16 @@ pub fn make_atom_in(alloc: &mut impl NounAllocator, bytes: &[u8]) -> Noun {
     }
 }
 
+/// Convert a u64 to a Nock atom, safe across the DIRECT_MAX boundary.
+///
+/// `D(value)` panics when `value > DIRECT_MAX` (= 2^63 - 1). Use this
+/// helper whenever the value's upper bit might be set — hashed note IDs,
+/// random nonces, etc. Small values are still encoded as direct atoms
+/// via `normalize_as_atom`.
+pub fn atom_from_u64(alloc: &mut impl NounAllocator, value: u64) -> Noun {
+    make_atom_in(alloc, &value.to_le_bytes())
+}
+
 /// Convert a string to a cord using any allocator.
 pub fn make_cord_in(alloc: &mut impl NounAllocator, s: &str) -> Noun {
     make_atom_in(alloc, s.as_bytes())

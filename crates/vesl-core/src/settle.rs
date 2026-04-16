@@ -410,8 +410,10 @@ fn build_settlement_payload_in(
     use nockchain_tip5_rs::tip5_to_atom_le_bytes;
 
     // Note: [id=@ hull=@ root=@ state=[%pending ~]]
-    let id = nockvm::noun::D(note.id);
-    let hull = nockvm::noun::D(note.hull);
+    // id/hull may exceed DIRECT_MAX (hashed note IDs from entropy);
+    // route through atom_from_u64 to avoid a direct-atom panic.
+    let id = atom_from_u64(slab, note.id);
+    let hull = atom_from_u64(slab, note.hull);
     let root_bytes = tip5_to_atom_le_bytes(&note.root);
     let root_noun = make_atom_in(slab, &root_bytes);
     let state_tag = make_tag_in(slab, "pending");

@@ -1756,7 +1756,9 @@ mod tests {
         assert_eq!(json.query, "Q3 revenue growth");
         assert!(json.chunks_retrieved > 0);
         assert!(json.settled);
-        assert_eq!(json.note_id, 1);
+        // note_id is now derived from timestamp+entropy (anti-replay),
+        // so just assert it's non-zero rather than a sequential index.
+        assert!(json.note_id > 0);
         assert!(!json.merkle_root.is_empty());
         assert!(json.prompt_bytes > 0);
         assert!(!json.output.is_empty());
