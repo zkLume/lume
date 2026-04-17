@@ -9,18 +9,10 @@
 //! (including prover jet registration) is the hull's responsibility.
 
 use anyhow::Result;
-use nock_noun_rs::{atom_from_u64, make_atom_in, make_list_in, make_loobean, make_tag_in, jam_to_bytes, new_stack, NounSlab, T};
+use nock_noun_rs::{atom_from_u64, make_atom_in, make_list_in, make_loobean, make_tag_in, jam_to_bytes, new_stack, slab_root, NounSlab, T};
 use nockchain_tip5_rs::tip5_to_atom_le_bytes;
 
 use crate::types::ForgePayload;
-
-/// Dereference a NounSlab's root noun (C-001).
-///
-/// Centralizes the unsafe dereference. The caller must ensure the slab's
-/// root was populated (via `set_root`, `cue_into`, or `NockApp::poke`).
-fn slab_root(slab: &NounSlab) -> nockvm::noun::Noun {
-    unsafe { *slab.root() }
-}
 
 /// Extract proof bytes from kernel effects after a %prove poke.
 ///

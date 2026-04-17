@@ -241,7 +241,7 @@ async fn forge_verify_bad_root_returns_false() {
 
     // Check the effect is [%verified %.n] (loobean false = atom 1)
     let slab = &effects[0];
-    let root_noun = unsafe { *slab.root() };
+    let root_noun = nock_noun_rs::slab_root(slab);
     let cell = root_noun.as_cell().expect("effect must be a cell");
     let tag = cell.head().as_atom().expect("tag is an atom");
     let tag_bytes = tag.as_ne_bytes();

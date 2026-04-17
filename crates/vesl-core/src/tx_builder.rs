@@ -119,16 +119,7 @@ pub fn jam_spends_manual(spends: &Spends) -> anyhow::Result<bytes::Bytes> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Dereference a NounSlab's root noun (C-001).
-///
-/// Centralizes the unsafe dereference. The caller must ensure the slab's
-/// root was populated (via `set_root`, `cue_into`, or `NockApp::poke`).
-fn slab_root(slab: &NounSlab) -> nockvm::noun::Noun {
-    // SAFETY: root() returns &Noun. We copy the Noun (which is Copy).
-    // The slab must outlive any indirect atoms — true for all call sites
-    // in this module since we consume the Noun before the slab drops.
-    unsafe { *slab.root() }
-}
+use nock_noun_rs::slab_root;
 
 /// Extract a Hash from a kernel effect of shape `[%tag hash-noun]`.
 pub fn extract_hash_from_effect(effects: &[NounSlab], expected_tag: &str) -> anyhow::Result<Hash> {

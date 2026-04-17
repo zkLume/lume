@@ -36,6 +36,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use nock_noun_rs::slab_root;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
 use nockvm::noun::{IndirectAtom, Noun, D, T};
@@ -47,15 +48,6 @@ use crate::types::*;
 // Re-export nockchain types needed for FirstName computation.
 use nockchain_types::tx_engine::common::Hash as ChainHash;
 use nockchain_types::tx_engine::v1::tx::SpendCondition;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Dereference a NounSlab's root noun (C-001).
-fn slab_root(slab: &NounSlab) -> Noun {
-    unsafe { *slab.root() }
-}
 
 // ---------------------------------------------------------------------------
 // Constants

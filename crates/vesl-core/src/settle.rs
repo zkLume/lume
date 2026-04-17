@@ -13,17 +13,12 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use nock_noun_rs::NounSlab;
+use nock_noun_rs::{slab_root, NounSlab};
 use nockchain_client_rs::ChainClient;
 use nockchain_tip5_rs::{verify_proof, Tip5Hash};
 
 use crate::guard::Guard;
 use crate::types::{GraftPayload, IntentVerifier, Manifest, Note};
-
-/// Dereference a NounSlab's root noun (C-001).
-fn slab_root(slab: &NounSlab) -> nockvm::noun::Noun {
-    unsafe { *slab.root() }
-}
 
 /// RAG manifest verifier — the built-in `IntentVerifier` implementation.
 ///

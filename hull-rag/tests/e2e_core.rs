@@ -65,7 +65,7 @@ fn mint_guard_settle_pipeline() {
         state: NoteState::Pending,
     };
     let slab = build_settle_poke(&note, &manifest, &root);
-    let root_noun = unsafe { *slab.root() };
+    let root_noun = nock_noun_rs::slab_root(&slab);
     assert!(root_noun.is_cell(), "settle poke must be a cell");
 }
 

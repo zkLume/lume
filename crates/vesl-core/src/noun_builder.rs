@@ -185,8 +185,7 @@ mod tests {
     fn register_poke_is_cell() {
         let root: Tip5Hash = [1, 2, 3, 4, 5];
         let slab = build_register_poke(7, &root);
-        // C-001: centralized dereference
-        let root = unsafe { *slab.root() };
+        let root = nock_noun_rs::slab_root(&slab);
         assert!(root.is_cell(), "register poke must be a cell");
     }
 }

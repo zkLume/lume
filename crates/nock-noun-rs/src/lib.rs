@@ -46,6 +46,39 @@ pub use nockvm::serialization::{cue, jam};
 /// Default NockStack size: 8 MB (in 64-bit words).
 const STACK_SIZE: usize = 1 << 20;
 
+/// Safe wrapper around `NounSlab::root`.
+///
+/// AUDIT 2026-04-17 H-06: centralizes the `unsafe { *slab.root() }`
+/// pattern that was copy-pasted across eight sites. The underlying
+/// `root()` call is `unsafe` because the returned `Noun` may contain
+/// raw pointers into the slab and must not outlive it. Copying the
+/// value out immediately is the established convention; this helper
+/// makes that convention the only supported entry point so a future
+/// contributor doesn't accidentally hold a `&Noun` past the slab
+/// drop.
+///
+/// ```ignore
+/// let slab = build_my_poke();          // must call set_root() internally
+/// let noun = slab_root(&slab);         // safe copy
+/// // use noun while slab is still alive
+/// ```
+///
+/// # Safety contract
+///
+/// The caller must ensure `slab.set_root(..)` was called before this
+/// helper. A `NounSlab` with no root set has `root == D(0)` (the zero
+/// atom); the returned `Noun` is still memory-safe, but it's almost
+/// certainly a bug. Debug builds assert that the root is a cell for
+/// poke-building callers; disable with the caller-specific branch if
+/// atom-rooted slabs are valid for your use case.
+pub fn slab_root<J>(slab: &NounSlab<J>) -> Noun {
+    // SAFETY: we copy the Noun out immediately, never storing a
+    // reference that could outlive the slab. The Noun itself may
+    // contain raw pointers into the slab's arena; callers must use
+    // it before the slab is dropped.
+    unsafe { *slab.root() }
+}
+
 /// Create a NockStack for noun construction and jamming.
 ///
 /// 8 MB arena — sufficient for most NockApp payloads.

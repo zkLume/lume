@@ -35,6 +35,7 @@ use nockapp::kernel::boot::NockStackSize;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::wire::{SystemWire, Wire};
 use nockapp::NockApp;
+use nock_noun_rs::slab_root;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -48,15 +49,6 @@ use crate::retrieve::Retriever;
 use crate::signing;
 use crate::tx_builder;
 use crate::types::*;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Dereference a NounSlab's root noun (C-001).
-fn slab_root(slab: &NounSlab) -> nockapp::Noun {
-    unsafe { *slab.root() }
-}
 
 /// Derive a note ID from query + timestamp + random nonce (H-005).
 ///
