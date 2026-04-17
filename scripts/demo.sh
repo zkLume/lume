@@ -36,6 +36,10 @@ SETTLEMENT_MODE="fakenet"
 OLLAMA_URL="${OLLAMA_URL:-}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
 HULL_PORT="${HULL_PORT:-3000}"
+# AUDIT 2026-04-17 L-03: demo binds loopback by default. Pass
+# --expose-external to bind 0.0.0.0 (required for docker-compose or
+# remote reachability) — opt-in so nothing accidentally exposes itself.
+HULL_BIND_ADDR="${HULL_BIND_ADDR:-127.0.0.1}"
 NOCKCHAIN_GRPC_ADDR="${NOCKCHAIN_GRPC_ADDR:-127.0.0.1:9090}"
 # Demo signing key PKH — matches hull::signing::demo_signing_key()
 MINING_PKH="${MINING_PKH:-5pJiNWqnouxku6SvGU6XZhu98nHH5VFMaNJ4r1vtHxPJ5sHurHBfYnk}"
@@ -52,6 +56,7 @@ while [[ $# -gt 0 ]]; do
         --ollama-url)  OLLAMA_URL="$2"; shift 2 ;;
         --ollama-model) OLLAMA_MODEL="$2"; shift 2 ;;
         --port)        HULL_PORT="$2"; shift 2 ;;
+        --expose-external) HULL_BIND_ADDR="0.0.0.0"; shift ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -63,6 +68,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --ollama-url URL          Use real LLM (e.g., http://localhost:11434)"
             echo "  --ollama-model NAME       Ollama model name (default: llama3.2)"
             echo "  --port PORT               Hull HTTP port (default: 3000)"
+            echo "  --expose-external         Bind 0.0.0.0 (default: 127.0.0.1, loopback only)"
             echo "  -h, --help                Show this help"
             echo ""
             echo "Environment:"
@@ -266,6 +272,7 @@ HULL_FLAGS=(
     --new
     --serve
     --port "$HULL_PORT"
+    --bind-addr "$HULL_BIND_ADDR"
     --docs "$DEMO_DOCS"
     --top-k 3
     --settlement-mode "$SETTLEMENT_MODE"
