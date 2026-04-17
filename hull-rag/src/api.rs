@@ -76,6 +76,15 @@ fn derive_note_id(query: &str) -> u64 {
     content.extend_from_slice(&nonce);
     let digest = hash_leaf(&content);
     // Truncate tip5 digest to u64 (first limb). Ensure non-zero.
+    //
+    // AUDIT 2026-04-17 L-02: collision analysis. With the graft's
+    // 1M-per-epoch cap (vesl-graft H-01), the total simultaneously
+    // live note-id space is ~2M (current + prior epoch). Birthday
+    // bound on a 64-bit keyspace is ~2^32; 2^21 items give a
+    // collision probability of roughly N^2 / 2k = 2^42 / 2^65 = 2^-23,
+    // about 1 in 8M over a full graft lifetime. Acceptable.
+    // Promote to a full tip5 digest if/when higher throughput makes
+    // this uncomfortable.
     let id = digest[0];
     if id == 0 { digest[1] | 1 } else { id }
 }
