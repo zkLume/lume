@@ -229,6 +229,14 @@
     ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
       :_  state
       ~[[%vesl-verified %.n]]
+    ::  Guard: note header root must match expected root (H-04 parity
+    ::  with %vesl-settle). Without this, a caller polling verify can
+    ::  get a green light and then watch settle crash on a field verify
+    ::  never inspected.
+    ::
+    ?.  =(root.note.args expected-root.args)
+      :_  state
+      ~[[%vesl-verified %.n]]
     ::  Verify via caller's gate — soft failure (no crash)
     ::
     =/  ok=?  (veri id.note.args data.args expected-root.args)
