@@ -14,15 +14,26 @@
 ::  Newline separator (byte 0xa) ensures collision-resistant
 ::  reconstruction. Tail-recursive.
 ::
+::  AUDIT 2026-04-17 M-05: belt-and-suspenders size cap. The Rust
+::  hull caps JSON body at 4 MB and manifest total at 10 MB, but a
+::  direct poke bypasses those guards. Refuse reconstruction once
+::  the built prompt exceeds 10 MB — matches the Rust cap — so the
+::  Hoon path has its own ceiling and callers can't crash the
+::  Nock stack by handing the kernel a giant manifest.
+::
 ++  build-prompt
   |=  [query=@t dats=(list @t)]
   ^-  @t
   =/  built=@t  query
   =/  sep  10
+  =/  max-bytes=@  ^~((mul 10.000 1.000))
   |-
   ?~  dats
     built
   =/  nex=@t  `@t`(cat 3 (cat 3 built sep) i.dats)
+  ?:  (gth (met 3 nex) max-bytes)
+    ~|  %vesl-prompt-too-large
+    !!
   $(built nex, dats t.dats)
 ::
 ::  +verify-manifest: prove AI output derives strictly from verified data
