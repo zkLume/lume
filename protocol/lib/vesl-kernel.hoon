@@ -186,6 +186,26 @@
       ::  64 nested increments on [0 1]
       ::  known-working pattern: atom subject + Nock 0/4 only
       ::
+      ::  TODO: AUDIT 2026-04-17 C-lead-1 — STARK formula hardcoding
+      ::
+      ::  The proved formula below is a hardcoded 64-nested-increment
+      ::  `[4 [4 [4 ... [4 [0 1]]]]]`. No version tag, no length prefix,
+      ::  no explicit commitment to the formula shape is absorbed into
+      ::  the Fiat-Shamir transcript beyond the root/hull digests set by
+      ::  vesl-prover. If the Rust prover's opcode count or structure
+      ::  silently drifts (refactor, jet change, upstream nockvm update),
+      ::  the verifier could accept a STARK that proves a *different*
+      ::  formula without raising an error.
+      ::
+      ::  Suggested fix (requires STARK-fluent reviewer):
+      ::    Hash the formula noun and absorb the digest into the
+      ::    Fiat-Shamir transcript before challenge derivation, or
+      ::    prepend a version tag to the proof header. Do not edit
+      ::    this site without cross-VM prove->verify on a perturbed
+      ::    formula to confirm binding holds.
+      ::
+      ::  See .dev/CRITICAL_LEADS.md.
+      ::
       =/  fs-formula=*
         =/  f=*  [0 1]
         =|  i=@
