@@ -48,3 +48,4 @@ pub use graft_pokes::settle::{
     build_vesl_register_poke, build_vesl_settle_poke, build_vesl_verify_poke,
 };
 pub use graft_pokes::mint::build_mint_commit_poke;
+pub use graft_pokes::guard::{build_guard_register_poke, build_guard_check_poke};
