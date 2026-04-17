@@ -147,6 +147,14 @@
     =/  chal-map=(map term belt)
       (bp-zip-chals-list:chal chal-names-basic:chal challenges)
     ::
+    :: TODO: AUDIT 2026-04-17 C-lead-2 — verifier completeness / perf TODO
+    ::   Perf optimization sits next to soundness-critical challenge
+    ::   derivation. Any dropped constraint on this path is a silent
+    ::   soundness hole. Do not land the perf fix without a second
+    ::   reviewer fluent in STARK constraint systems and a constraint-
+    ::   count invariant test that asserts absorbed challenges ==
+    ::   expected challenges. See .dev/CRITICAL_LEADS.md.
+    ::
     :: TODO: read these out of the augmented-chals bpoly and dont waste
     :: time building the map
     =/  [alf=pelt j=pelt k=pelt l=pelt m=pelt z=pelt]
