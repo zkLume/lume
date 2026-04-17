@@ -1,6 +1,6 @@
 # Vesl
 
-A verification SDK for Nockchain. Four kernels — **mint** (commit), **guard** (verify), **settle** (on-chain), **forge** (STARK-prove) — with Rust facades in `vesl-core`, graft templates for adding them to an existing NockApp, and `hull-rag` as a reference implementation.
+A verification SDK for Nockchain. Four primitives — **mint** (commit), **guard** (verify), **settle** (on-chain), **forge** (STARK-prove) — each shipping as a Hoon kernel with a Rust facade in `vesl-core`, graft templates for adding them to an existing NockApp, and `hull-rag` as a reference implementation.
 
 
 ## Demo

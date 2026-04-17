@@ -241,7 +241,7 @@ Otherwise, point to the nockchain Hoon library:
 hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
 ```
 
-## The Tiers
+## The Primitives
 
 If you only need commitment: use Mint (Rust-only, no kernel).
 

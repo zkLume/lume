@@ -1,13 +1,13 @@
 //! vesl-core — High-level Vesl SDK
 //!
-//! Four tiers, each a different weight class:
+//! Four primitives, each a different weight class:
 //!
 //! - **Mint** — Data commitment. Pure math, zero async. Commit chunks, get a root.
 //! - **Guard** — Verification. Prove chunks and manifests against trusted roots.
 //! - **Settle** — Settlement. Kernel boot + chain access for note state transitions.
 //! - **Forge** — STARK proof. Everything Settle does, plus proof generation.
 //!
-//! Callers pick the tier they need. Mint users never touch the kernel.
+//! Callers pick the primitive they need. Mint users never touch the kernel.
 //! Forge users get the full pipeline.
 
 pub mod settle;
