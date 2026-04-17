@@ -11,3 +11,4 @@
 //! for the full convention.
 
 pub mod settle;
+pub mod mint;
