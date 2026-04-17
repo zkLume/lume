@@ -372,3 +372,26 @@ settle path. Options:
   Gate returns `%.n` for malformed `data`, keeping `%vesl-verify`
   honest and letting `%vesl-settle` reject without a kernel crash.
 
+### Peek paths are unauthenticated (AUDIT M-04)
+
+`vesl-peek` exposes these paths with no auth:
+
+| Path | Returns |
+|------|---------|
+| `[%registered hull=@ ~]` | `%.y` / `%.n` — is this hull registered? |
+| `[%settled note-id=@ ~]`  | `%.y` / `%.n` — is this note-id in current OR prior epoch? |
+| `[%root hull=@ ~]`        | The Merkle root bound to this hull |
+| `[%epoch ~]`              | Current epoch number |
+| `[%settle-count ~]`       | Notes settled in current epoch |
+
+Any caller that can peek your state can see which hulls are registered,
+which notes settled, and the Merkle root bound to each hull. Public by
+design for verifiable graft deployments — a third party can independently
+audit what your graft has committed to.
+
+If you need private-graft semantics, the kernel that wraps `vesl-peek`
+owns gating. Don't re-export these paths without thinking about who
+sees them. The typical pattern is to fall through to `vesl-peek` at
+the top of your kernel's `++peek`; if that's too permissive for your
+deployment, inline only the peek paths you want to expose.
+
