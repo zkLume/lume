@@ -348,3 +348,27 @@ burns a Nock trace. If your graft sits behind a public HTTP endpoint,
 place for shape pre-validation. Do not rely on the graft to filter
 malformed pokes.
 
+### The gate owns `data` shape validation (AUDIT M-03)
+
+`graft-payload`'s `data` field is typed `*` (any noun). The strict-mold
+cast inside `vesl-poke` validates `note` and `expected-root` but lets
+`data` pass through untyped — that's intentional so the graft can stay
+domain-agnostic. Your gate is the only line of defense on `data` shape.
+
+A gate that panics on unexpected `data` shapes will crash the whole
+settle path. Options:
+
+- **Hard cast (crash on mismatch)**: `=/  mani  ;;(manifest data)`
+  then operate on `mani`. Any shape mismatch crashes the gate, which
+  crashes the settle — same behavior as verification failure in the
+  `%vesl-settle` path (unprovable STARK), but noisier for
+  `%vesl-verify` which usually returns a soft `%.n`.
+- **Safe cast (soft reject)**: wrap the cast in `mule`:
+  ```hoon
+  =/  attempt  (mule |.(;;(manifest data)))
+  ?.  -.attempt  %.n
+  (verify-manifest p.attempt expected-root)
+  ```
+  Gate returns `%.n` for malformed `data`, keeping `%vesl-verify`
+  honest and letting `%vesl-settle` reject without a kernel crash.
+
