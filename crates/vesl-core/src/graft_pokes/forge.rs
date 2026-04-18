@@ -3,7 +3,7 @@
 //! Forge is the heaviest commitment tier: hash the data with
 //! `hash-leaf`, then generate a STARK proof over the hashing
 //! computation. The graft is stateless (proof emitted as an effect,
-//! nothing persisted); pair with a stateful graft like `vesl-graft`
+//! nothing persisted); pair with a stateful graft like `settle-graft`
 //! if you need registration/replay semantics.
 //!
 //! Pair with the `%forge-prove` arm installed by `graft-inject`.

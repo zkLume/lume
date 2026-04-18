@@ -10,7 +10,7 @@
 # query). The composer's state + peek chains skip forge entirely
 # thanks to omitted-block handling.
 #
-# Pair forge with vesl-graft for registration-check semantics — on
+# Pair forge with settle-graft for registration-check semantics — on
 # its own, forge trusts the caller's hull/note-id. The generated
 # proof is bound to `hull` and `root = hash-leaf(data)` via the
 # Fiat-Shamir transcript.

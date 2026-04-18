@@ -16,19 +16,19 @@ Drop the hook — settle state on-chain.
 - `/count` — how many reports
 
 **Grafted verification (full settlement):**
-- `%vesl-register hull root` — register Merkle root
-- `%vesl-verify payload` — verify manifest (read-only)
-- `%vesl-settle payload` — verify + settle note (state transition + replay guard)
-- `/vesl-registered/<hull>`, `/vesl-root/<hull>`, `/vesl-settled/<note-id>`
+- `%settle-register hull root` — register Merkle root
+- `%settle-verify payload` — verify manifest (read-only)
+- `%settle-note payload` — verify + settle note (state transition + replay guard)
+- `/settle-registered/<hull>`, `/settle-root/<hull>`, `/settle-noted/<note-id>`
 
-The kernel's `%vesl-settle` handler:
+The kernel's `%settle-note` handler:
 1. Cues the jammed settlement-payload
 2. Checks the root is registered (guard 1)
 3. Checks the note isn't already settled (guard 2 — replay)
 4. Verifies the full manifest against the root (guard 3)
 5. Transitions the note to `%settled`
 
-All five steps are handled by `vesl-poke` from `vesl-graft.hoon`. Your kernel just delegates.
+All five steps are handled by `settle-poke` from `settle-graft.hoon`. Your kernel just delegates.
 
 ## The Settlement Pattern
 
@@ -60,7 +60,7 @@ cargo run
 
 If you started with `graft-mint` and need settlement:
 
-1. Add `%vesl-settle` to your cause type (it's already in `vesl-cause`)
+1. Add `%settle-note` to your cause type (it's already in `settle-cause`)
 2. Add the settle delegation in your poke arm (3 lines, same pattern)
 3. Done. The Graft handles replay protection and state transitions.
 

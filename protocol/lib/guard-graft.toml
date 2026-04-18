@@ -9,7 +9,7 @@
 #   %guard-register — append-only commit of a hull's Merkle root.
 #   %guard-check    — verify hash-leaf(data) against the registered
 #                     root. Emits %guard-checked with a loobean; no
-#                     crash on mismatch (use vesl-graft for crash-on-
+#                     crash on mismatch (use settle-graft for crash-on-
 #                     bad-verify semantics).
 #
 # Peek path: [%guard-root hull=@] returns the registered root or ~.

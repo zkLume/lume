@@ -10,10 +10,10 @@
 ::  Forge is the heaviest commitment tier:
 ::    mint-graft  — commit a root under a hull-id. No verify.
 ::    guard-graft — commit + leaf-hash verification. No proof.
-::    vesl-graft  — full verify-gate lifecycle with replay protection.
+::    settle-graft  — full verify-gate lifecycle with replay protection.
 ::    forge-graft — same leaf-hash as guard, plus a STARK proof over
 ::                  the hashing. Pair with a stateful graft (usually
-::                  vesl-graft) for registration-check semantics;
+::                  settle-graft) for registration-check semantics;
 ::                  forge itself trusts the caller's hull/note-id.
 ::
 ::  The proof is bound to `hull` and `root = hash-leaf(data)` via the

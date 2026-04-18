@@ -44,7 +44,7 @@
 ::
 ::  +commits-cap: upper bound on the `commits` map.
 ::
-::  Mirror of vesl-graft's registered-cap (AUDIT 2026-04-17 H-02).
+::  Mirror of settle-graft's registered-cap (AUDIT 2026-04-17 H-02).
 ::  Without a cap, any caller who can poke %mint-commit cheaply can
 ::  grow state without bound. 10M is the static cap — large enough
 ::  that no legitimate deployment hits it, small enough that a

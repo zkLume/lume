@@ -31,7 +31,7 @@ The Hoon kernel (`hoon/app/app.hoon`) has `CUSTOMIZE` markers:
 
 - **`%my-action`** — rename to your domain poke tag
 - **`items`** — replace with your state fields
-- **`versioned-state`** — add fields after `vesl=vesl-state`
+- **`versioned-state`** — add fields after `settle=settle-state`
 - **`++peek`** — add your query paths
 
 The verification gate defaults to `=((hash-leaf ;;(@ data)) expected-root)`. Replace with your domain logic (manifest verification, signature check, etc.).
@@ -41,7 +41,7 @@ The verification gate defaults to `=((hash-leaf ;;(@ data)) expected-root)`. Rep
 ```
 hoon/
   app/app.hoon              main kernel (graft pre-wired)
-  lib/vesl-graft.hoon       state + poke dispatcher
+  lib/settle-graft.hoon     state + poke dispatcher
   lib/vesl-merkle.hoon      Merkle primitives (tip5)
   common/wrapper.hoon       state versioning
   common/zeke.hoon          tip5 hash chain

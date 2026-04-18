@@ -44,6 +44,14 @@ pub use config::{SettlementMode, SettlementConfig, SettlementToml};
 
 // Graft poke builders — used by callers that compose grafted kernels via
 // `graft-inject` (in vesl-nockup). One submodule per primitive.
+//
+// Phase 12A renamed the settle helpers from `build_vesl_*_poke` to
+// `build_settle_*_poke` to match the `%settle-*` cause-tag rename.
+// Deprecated aliases are re-exported below for one release cycle.
+pub use graft_pokes::settle::{
+    build_settle_note_poke, build_settle_register_poke, build_settle_verify_poke,
+};
+#[allow(deprecated)]
 pub use graft_pokes::settle::{
     build_vesl_register_poke, build_vesl_settle_poke, build_vesl_verify_poke,
 };

@@ -1,14 +1,14 @@
-::  protocol/tests/test-graft.hoon: vesl-graft composable state test
+::  protocol/tests/test-graft.hoon: settle-graft composable state test
 ::
 ::  Tests the Graft lifecycle: register → peek → settle → replay guard.
 ::  Uses the hedge fund scenario from test-entrypoint.hoon.
-::  Passes a RAG verification gate to the generic vesl-poke.
+::  Passes a RAG verification gate to the generic settle-poke.
 ::  Compilation success = all assertions passed.
 ::
 /-  *vesl
 /+  *vesl-merkle
 /+  *rag-logic
-/+  *vesl-graft
+/+  *settle-graft
 ::
 ::  ============================================
 ::  SETUP: Build valid hedge fund scenario
@@ -42,7 +42,7 @@
 ::
 =/  pending-note  [id=42 hull=7 root=root state=[%pending ~]]
 ::
-::  RAG verification gate — wraps verify-manifest for vesl-poke
+::  RAG verification gate — wraps verify-manifest for settle-poke
 ::
 =/  rag-gate=verify-gate
   |=  [note-id=@ data=* expected-root=@]
@@ -54,11 +54,11 @@
 ::  TEST 1: Fresh state is empty
 ::  ============================================
 ::
-=/  st=vesl-state  new-state
+=/  st=settle-state  new-state
 ::
 ::  Peek for unregistered hull -> %.n
 ::
-=/  peek-unreg  (vesl-peek st /vesl-registered/7)
+=/  peek-unreg  (settle-peek st /settle-registered/7)
 ?>  ?=(^ peek-unreg)
 ?>  ?=(^ u.peek-unreg)
 ?>  =(%.n ;;(? u.u.peek-unreg))
@@ -67,27 +67,27 @@
 ::  TEST 2: Register a hull root
 ::  ============================================
 ::
-=/  reg-result  (vesl-poke st [%vesl-register hull=7 root=root] rag-gate)
+=/  reg-result  (settle-poke st [%settle-register hull=7 root=root] rag-gate)
 =/  reg-effects  -.reg-result
 =/  st  +.reg-result
 ::
-::  Effect should be [%vesl-registered 7 root]
+::  Effect should be [%settle-registered 7 root]
 ::
 ?>  ?=(^ reg-effects)
-?>  ?=(%vesl-registered -.i.reg-effects)
+?>  ?=(%settle-registered -.i.reg-effects)
 ?>  =(7 hull.i.reg-effects)
 ?>  =(root root.i.reg-effects)
 ::
 ::  Peek should now return %.y
 ::
-=/  peek-reg  (vesl-peek st /vesl-registered/7)
+=/  peek-reg  (settle-peek st /settle-registered/7)
 ?>  ?=(^ peek-reg)
 ?>  ?=(^ u.peek-reg)
 ?>  =(%.y ;;(? u.u.peek-reg))
 ::
 ::  Root peek should return the root
 ::
-=/  peek-root  (vesl-peek st /vesl-root/7)
+=/  peek-root  (settle-peek st /settle-root/7)
 ?>  ?=(^ peek-root)
 ?>  ?=(^ u.peek-root)
 ?>  =(`root ;;((unit @) u.u.peek-root))
@@ -97,17 +97,17 @@
 ::  ============================================
 ::
 =/  verify-payload=@  (jam [pending-note valid-mani root])
-=/  ver-result  (vesl-poke st [%vesl-verify payload=verify-payload] rag-gate)
+=/  ver-result  (settle-poke st [%settle-verify payload=verify-payload] rag-gate)
 =/  ver-effects  -.ver-result
 =/  st  +.ver-result
 ::
 ?>  ?=(^ ver-effects)
-?>  ?=(%vesl-verified -.i.ver-effects)
+?>  ?=(%settle-verified -.i.ver-effects)
 ?>  =(%.y ok.i.ver-effects)
 ::
 ::  State should be unchanged (no settlement)
 ::
-=/  peek-not-settled  (vesl-peek st /vesl-settled/42)
+=/  peek-not-settled  (settle-peek st /settle-noted/42)
 ?>  ?=(^ peek-not-settled)
 ?>  ?=(^ u.peek-not-settled)
 ?>  =(%.n ;;(? u.u.peek-not-settled))
@@ -117,21 +117,21 @@
 ::  ============================================
 ::
 =/  settle-payload=@  (jam [pending-note valid-mani root])
-=/  set-result  (vesl-poke st [%vesl-settle payload=settle-payload] rag-gate)
+=/  set-result  (settle-poke st [%settle-note payload=settle-payload] rag-gate)
 =/  set-effects  -.set-result
 =/  st  +.set-result
 ::
-::  Effect should be %vesl-settled with the settled note
+::  Effect should be %settle-noted with the settled note
 ::
 ?>  ?=(^ set-effects)
-?>  ?=(%vesl-settled -.i.set-effects)
+?>  ?=(%settle-noted -.i.set-effects)
 ?>  =(42 id.note.i.set-effects)
 ?>  =(7 hull.note.i.set-effects)
 ?>  =([%settled ~] state.note.i.set-effects)
 ::
 ::  Peek: note 42 should be settled
 ::
-=/  peek-settled  (vesl-peek st /vesl-settled/42)
+=/  peek-settled  (settle-peek st /settle-noted/42)
 ?>  ?=(^ peek-settled)
 ?>  ?=(^ u.peek-settled)
 ?>  =(%.y ;;(? u.u.peek-settled))
@@ -140,13 +140,13 @@
 ::  TEST 5: Replay protection — re-settling same note fails
 ::  ============================================
 ::
-=/  replay-result  (vesl-poke st [%vesl-settle payload=settle-payload] rag-gate)
+=/  replay-result  (settle-poke st [%settle-note payload=settle-payload] rag-gate)
 =/  replay-effects  -.replay-result
 ::
-::  Should get a %vesl-error, not a %vesl-settled
+::  Should get a %settle-error, not a %settle-noted
 ::
 ?>  ?=(^ replay-effects)
-?>  ?=(%vesl-error -.i.replay-effects)
+?>  ?=(%settle-error -.i.replay-effects)
 ::
 ::  ============================================
 ::  TEST 6: Unregistered root settlement fails
@@ -156,10 +156,10 @@
 ::
 =/  bad-note  [id=99 hull=999 root=root state=[%pending ~]]
 =/  bad-payload=@  (jam [bad-note valid-mani root])
-=/  unreg-result  (vesl-poke st [%vesl-settle payload=bad-payload] rag-gate)
+=/  unreg-result  (settle-poke st [%settle-note payload=bad-payload] rag-gate)
 =/  unreg-effects  -.unreg-result
 ::
 ?>  ?=(^ unreg-effects)
-?>  ?=(%vesl-error -.i.unreg-effects)
+?>  ?=(%settle-error -.i.unreg-effects)
 ::
 %pass

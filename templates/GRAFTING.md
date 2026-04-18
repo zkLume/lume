@@ -30,7 +30,7 @@ Copy these into your template's `hoon/` directory:
 
 ```
 hoon/
-  lib/vesl-graft.hoon    # state + poke dispatcher (gate-agnostic)
+  lib/settle-graft.hoon    # state + poke dispatcher (gate-agnostic)
   lib/vesl-merkle.hoon   # Merkle primitives (tip5)
 ```
 
@@ -42,7 +42,7 @@ hoon/
   lib/rag-logic.hoon    # RAG verification gates (verify-manifest)
 ```
 
-These live in `protocol/sur/` and `protocol/lib/` in the Vesl repo. For non-RAG gates, only `vesl-graft.hoon` and `vesl-merkle.hoon` are required — see [Custom Gates](#custom-gates--beyond-rag) below.
+These live in `protocol/sur/` and `protocol/lib/` in the Vesl repo. For non-RAG gates, only `settle-graft.hoon` and `vesl-merkle.hoon` are required — see [Custom Gates](#custom-gates--beyond-rag) below.
 
 For self-contained compilation (no `$NOCK_HOME`), also copy the tip5 primitives:
 
@@ -60,19 +60,19 @@ At the top of your kernel (`hoon/app/app.hoon`):
 
 ```hoon
 /-  *vesl             :: RAG types (only needed for RAG gates)
-/+  *vesl-graft       :: state + poke dispatcher
+/+  *settle-graft       :: state + poke dispatcher
 /+  *rag-logic       :: RAG verification gates (only for RAG)
 /=  *  /common/wrapper
 ```
 
 ## Step 3: Compose State
 
-Add `vesl-state` to your `versioned-state`. It tracks which roots are registered and which notes are settled:
+Add `settle-state` to your `versioned-state`. It tracks which roots are registered and which notes are settled:
 
 ```hoon
 +$  versioned-state
   $:  %v1
-      vesl=vesl-state          ::  [epoch registered settled settle-count prior-settled]
+      settle=settle-state          ::  [epoch registered settled settle-count prior-settled]
       ::  ...your state fields below...
       items=(map @t @)
   ==
@@ -80,44 +80,44 @@ Add `vesl-state` to your `versioned-state`. It tracks which roots are registered
 
 ## Step 4: Include Graft Causes
 
-Add `vesl-cause` to your cause union. It brings `%vesl-register`, `%vesl-verify`, and `%vesl-settle`:
+Add `settle-cause` to your cause union. It brings `%settle-register`, `%settle-verify`, and `%settle-note`:
 
 ```hoon
 +$  cause
   $%  [%add-item key=@t val=@]    ::  your domain poke
-      vesl-cause                   ::  brings all %vesl-* pokes
+      settle-cause                   ::  brings all %settle-* pokes
   ==
 ```
 
 ## Step 5: Delegate Pokes
 
-In your `++poke` arm, delegate Vesl causes to `vesl-poke`. Define your verification gate and pass it as the third argument:
+In your `++poke` arm, delegate Vesl causes to `settle-poke`. Define your verification gate and pass it as the third argument:
 
 ```hoon
-  %vesl-register
-=/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+  %settle-register
+=/  lc=settle-cause  [%settle-register hull.u.act root.u.act]
 =/  rag-gate=verify-gate
   |=  [note-id=@ data=* expected-root=@]
   ^-  ?
   =/  mani  ;;(manifest data)
   (verify-manifest mani expected-root)
-=/  [efx=(list vesl-effect) new-vesl=vesl-state]
-  (vesl-poke vesl.state lc rag-gate)
-:_  state(vesl new-vesl)
+=/  [efx=(list settle-effect) new-settle=settle-state]
+  (settle-poke settle.state lc rag-gate)
+:_  state(settle new-settle)
 ^-  (list effect)  efx
 ```
 
-Same pattern for `%vesl-verify` and `%vesl-settle`. Copy-paste, change the cause tag. The gate can be any function matching `$-([note-id=@ data=* expected-root=@] ?)` — see [Custom Gates](#custom-gates--beyond-rag).
+Same pattern for `%settle-verify` and `%settle-note`. Copy-paste, change the cause tag. The gate can be any function matching `$-([note-id=@ data=* expected-root=@] ?)` — see [Custom Gates](#custom-gates--beyond-rag).
 
 ## Step 6: Delegate Peeks
 
-In your `++peek` arm, fall through to `vesl-peek` for unrecognized paths:
+In your `++peek` arm, fall through to `settle-peek` for unrecognized paths:
 
 ```hoon
 ++  peek
   |=  =path
   ^-  (unit (unit *))
-  ?+  path  (vesl-peek vesl.state path)    ::  fallthrough
+  ?+  path  (settle-peek settle.state path)    ::  fallthrough
     [%item key=@t ~]  ...your peeks...
   ==
 ```
@@ -149,7 +149,7 @@ let root = mint.root().expect("committed");
 
 ## Step 9: Register the Root
 
-Build a `%vesl-register` poke and send it to the kernel:
+Build a `%settle-register` poke and send it to the kernel:
 
 ```rust
 use vesl_core::tip5_to_atom_le_bytes;
@@ -191,7 +191,7 @@ Guard verification is local — no kernel, no network, no async. Pure math.
 
 ## Step 11: Build and Send a Settlement Payload
 
-To settle a note, build a `graft-payload` noun, jam it, and poke `%vesl-settle`:
+To settle a note, build a `graft-payload` noun, jam it, and poke `%settle-note`:
 
 ```rust
 use vesl_core::tip5_to_atom_le_bytes;
@@ -212,7 +212,7 @@ let data = make_atom_in(&mut slab, leaf_bytes);
 let exp_root = make_atom_in(&mut slab, &rb);
 let payload_noun = T(&mut slab, &[note, data, exp_root]);
 
-// Jam the payload and send as [%vesl-settle jammed]
+// Jam the payload and send as [%settle-note jammed]
 let payload_bytes = {
     let mut stack = new_stack();
     jam_to_bytes(&mut stack, payload_noun)
@@ -225,7 +225,7 @@ slab.set_root(poke);
 app.poke(SystemWire.to_wire(), slab).await?;
 ```
 
-The same pattern works for `%vesl-verify` (soft verification, no state change). See [`graft-scaffold/src/main.rs`](./graft-scaffold/src/main.rs) for a complete working example.
+The same pattern works for `%settle-verify` (soft verification, no state change). See [`graft-scaffold/src/main.rs`](./graft-scaffold/src/main.rs) for a complete working example.
 
 ## Compile
 
@@ -249,15 +249,15 @@ If you need commitment + verification: add Guard (still Rust-only).
 
 If you need in-kernel state tracking: add the Graft (Hoon library).
 
-If you need settlement with replay protection: delegate `%vesl-settle` (Settle pattern).
+If you need settlement with replay protection: delegate `%settle-note` (Settle pattern).
 
 | Need | Use | Kernel? |
 |------|-----|---------|
 | Hash data, get roots | Mint | No |
 | Verify proofs | Mint + Guard | No |
 | Register roots in kernel | Mint + Graft | Yes |
-| Verify in kernel | Graft (%vesl-verify) | Yes |
-| Settle notes | Graft (%vesl-settle) | Yes |
+| Verify in kernel | Graft (%settle-verify) | Yes |
+| Settle notes | Graft (%settle-note) | Yes |
 | STARK proofs | Full vesl-kernel + prover | Yes (18MB) |
 
 ## Custom Gates — Beyond RAG
@@ -297,16 +297,16 @@ The Graft is domain-agnostic. The examples above use a RAG verification gate (ca
 2. **Define the gate inline** in your poke delegation:
 
 ```hoon
-  %vesl-settle
-=/  lc=vesl-cause  [%vesl-settle payload.u.act]
+  %settle-note
+=/  lc=settle-cause  [%settle-note payload.u.act]
 =/  my-gate=verify-gate
   |=  [note-id=@ data=* expected-root=@]
   ^-  ?
   :: ...your verification logic...
   %.y
-=/  [efx=(list vesl-effect) new-vesl=vesl-state]
-  (vesl-poke vesl.state lc my-gate)
-:_  state(vesl new-vesl)
+=/  [efx=(list settle-effect) new-settle=settle-state]
+  (settle-poke settle.state lc my-gate)
+:_  state(settle new-settle)
 ^-  (list effect)  efx
 ```
 
@@ -320,7 +320,7 @@ The Graft is domain-agnostic. The examples above use a RAG verification gate (ca
   ==
 ```
 
-`data` is whatever your gate expects. JAM the whole payload, pass it as the `payload` field in `%vesl-settle` or `%vesl-verify`.
+`data` is whatever your gate expects. JAM the whole payload, pass it as the `payload` field in `%settle-note` or `%settle-verify`.
 
 ### The graft-intent Template
 
@@ -340,7 +340,7 @@ broken deploy.
 
 ### Untrusted callers can crash your poke (AUDIT M-02)
 
-`%vesl-settle` and `%vesl-verify` both run `cue` on the attacker-supplied
+`%settle-note` and `%settle-verify` both run `cue` on the attacker-supplied
 `payload` atom before any guard. A malformed JAM crashes the kernel —
 you get a restart, no settlement, no state change, but every bad poke
 burns a Nock trace. If your graft sits behind a public HTTP endpoint,
@@ -351,7 +351,7 @@ malformed pokes.
 ### The gate owns `data` shape validation (AUDIT M-03)
 
 `graft-payload`'s `data` field is typed `*` (any noun). The strict-mold
-cast inside `vesl-poke` validates `note` and `expected-root` but lets
+cast inside `settle-poke` validates `note` and `expected-root` but lets
 `data` pass through untyped — that's intentional so the graft can stay
 domain-agnostic. Your gate is the only line of defense on `data` shape.
 
@@ -361,27 +361,27 @@ settle path. Options:
 - **Hard cast (crash on mismatch)**: `=/  mani  ;;(manifest data)`
   then operate on `mani`. Any shape mismatch crashes the gate, which
   crashes the settle — same behavior as verification failure in the
-  `%vesl-settle` path (unprovable STARK), but noisier for
-  `%vesl-verify` which usually returns a soft `%.n`.
+  `%settle-note` path (unprovable STARK), but noisier for
+  `%settle-verify` which usually returns a soft `%.n`.
 - **Safe cast (soft reject)**: wrap the cast in `mule`:
   ```hoon
   =/  attempt  (mule |.(;;(manifest data)))
   ?.  -.attempt  %.n
   (verify-manifest p.attempt expected-root)
   ```
-  Gate returns `%.n` for malformed `data`, keeping `%vesl-verify`
-  honest and letting `%vesl-settle` reject without a kernel crash.
+  Gate returns `%.n` for malformed `data`, keeping `%settle-verify`
+  honest and letting `%settle-note` reject without a kernel crash.
 
 ### Peek paths are unauthenticated (AUDIT M-04)
 
-`vesl-peek` exposes these paths with no auth:
+`settle-peek` exposes these paths with no auth:
 
 | Path | Returns |
 |------|---------|
-| `[%vesl-registered hull=@ ~]` | `%.y` / `%.n` — is this hull registered? |
-| `[%vesl-settled note-id=@ ~]`  | `%.y` / `%.n` — is this note-id in current OR prior epoch? |
-| `[%vesl-root hull=@ ~]`        | The Merkle root bound to this hull |
-| `[%vesl-epoch ~]`              | Current epoch number |
+| `[%settle-registered hull=@ ~]` | `%.y` / `%.n` — is this hull registered? |
+| `[%settle-noted note-id=@ ~]`  | `%.y` / `%.n` — is this note-id in current OR prior epoch? |
+| `[%settle-root hull=@ ~]`        | The Merkle root bound to this hull |
+| `[%settle-epoch ~]`            | Current epoch number |
 | `[%settle-count ~]`            | Notes settled in current epoch |
 
 Any caller that can peek your state can see which hulls are registered,
@@ -389,9 +389,9 @@ which notes settled, and the Merkle root bound to each hull. Public by
 design for verifiable graft deployments — a third party can independently
 audit what your graft has committed to.
 
-If you need private-graft semantics, the kernel that wraps `vesl-peek`
+If you need private-graft semantics, the kernel that wraps `settle-peek`
 owns gating. Don't re-export these paths without thinking about who
-sees them. The typical pattern is to fall through to `vesl-peek` at
+sees them. The typical pattern is to fall through to `settle-peek` at
 the top of your kernel's `++peek`; if that's too permissive for your
 deployment, inline only the peek paths you want to expose.
 

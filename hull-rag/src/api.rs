@@ -78,7 +78,7 @@ fn derive_note_id(query: &str) -> u64 {
     // Truncate tip5 digest to u64 (first limb). Ensure non-zero.
     //
     // AUDIT 2026-04-17 L-02: collision analysis. With the graft's
-    // 1M-per-epoch cap (vesl-graft H-01), the total simultaneously
+    // 1M-per-epoch cap (settle-graft H-01), the total simultaneously
     // live note-id space is ~2M (current + prior epoch). Birthday
     // bound on a 64-bit keyspace is ~2^32; 2^21 items give a
     // collision probability of roughly N^2 / 2k = 2^42 / 2^65 = 2^-23,

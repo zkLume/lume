@@ -9,7 +9,7 @@
 ::  create a permanent verifiable record.
 ::
 ::  Demonstrates:
-::    - full Graft with settlement (%vesl-settle)
+::    - full Graft with settlement (%settle-note)
 ::    - replay protection (can't settle the same note twice)
 ::    - domain state alongside verification + settlement state
 ::    - the Beak pattern: commit → register → settle
@@ -17,17 +17,17 @@
 ::  Compile: hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
 ::
 /-  *vesl
-/+  *vesl-graft
+/+  *settle-graft
 /+  *rag-logic
 /=  *  /common/wrapper
 ::
 =>
 |%
-::  kernel state — reports + grafted Vesl state
+::  kernel state — reports + grafted settle state
 ::
 +$  versioned-state
   $:  %v1
-      vesl=vesl-state
+      settle=settle-state
       reports=(map @ @t)
       report-count=@ud
   ==
@@ -36,7 +36,7 @@
 ::
 +$  cause
   $%  [%submit title=@t body=@t]
-      vesl-cause
+      settle-cause
   ==
 --
 |%
@@ -49,12 +49,12 @@
     |=  old-state=versioned-state
     ^-  _state
     old-state
-  ::  +peek: query reports or Vesl state
+  ::  +peek: query reports or settle state
   ::
   ++  peek
     |=  =path
     ^-  (unit (unit *))
-    ?+  path  (vesl-peek vesl.state path)
+    ?+  path  (settle-peek settle.state path)
       [%report id=@ ~]
         =/  rid  +<.path
         ``(~(get by reports.state) rid)
@@ -87,47 +87,47 @@
       ::  --- grafted tentacle (settlement) ---
       ::  the RAG gate casts opaque data to a manifest and verifies it.
       ::
-        %vesl-register
-      =/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+        %settle-register
+      =/  lc=settle-cause  [%settle-register hull.u.act root.u.act]
       =/  rag-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =/  mani  ;;(manifest data)
         (verify-manifest mani expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc rag-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc rag-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
       ::
-        %vesl-verify
-      =/  lc=vesl-cause  [%vesl-verify payload.u.act]
+        %settle-verify
+      =/  lc=settle-cause  [%settle-verify payload.u.act]
       =/  rag-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =/  mani  ;;(manifest data)
         (verify-manifest mani expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc rag-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc rag-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
       ::
-      ::  %vesl-settle — the Beak.  verify + state transition.
+      ::  %settle-note — the Beak.  verify + state transition.
       ::  on success, the note is permanently settled.
       ::  on failure (bad proof, unregistered root, replay),
       ::  the Graft returns an error effect.
       ::
-        %vesl-settle
-      =/  lc=vesl-cause  [%vesl-settle payload.u.act]
+        %settle-note
+      =/  lc=settle-cause  [%settle-note payload.u.act]
       =/  rag-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =/  mani  ;;(manifest data)
         (verify-manifest mani expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc rag-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc rag-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
     ==

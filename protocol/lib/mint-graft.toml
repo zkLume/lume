@@ -2,20 +2,16 @@
 #
 # Ships the mint primitive as a composable graft. Priority 20 sits
 # between settle (10) and guard (30) in the commitment lane.
-# `after = ["vesl-graft"]` keeps settle's state field first in the
+# `after = ["settle-graft"]` keeps settle's state field first in the
 # host kernel's versioned-state for kernels that install both —
 # settle is the heavier primitive and readers tend to reach for
 # its fields first.
-#
-# Renamed in Phase 12A follows settle's `vesl-graft` → `settle-graft`
-# rename (no equivalent rename planned for mint-graft — the primitive
-# name is already aligned).
 
 [graft]
 name     = "mint-graft"
 version  = "0.1.0"
 priority = 20
-after    = ["vesl-graft"]
+after    = ["settle-graft"]
 
 [graft.blocks.imports]
 sentinel = "*mint-graft"

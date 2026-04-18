@@ -13,8 +13,8 @@ read this to write a manifest without reading the loader.
 
 ```
 protocol/lib/
-  vesl-graft.hoon         host library
-  vesl-graft.toml         manifest (this file's schema)
+  settle-graft.hoon       host library
+  settle-graft.toml       manifest (this file's schema)
   mint-graft.hoon
   mint-graft.toml
   ...
@@ -36,7 +36,7 @@ Example:
 
 ```toml
 [graft]
-name     = "vesl-graft"
+name     = "settle-graft"
 version  = "0.1.0"
 priority = 10
 after    = []
@@ -162,7 +162,7 @@ fail loudly when a required graft is missing.
 ```json
 [
   {
-    "name": "vesl-graft",
+    "name": "settle-graft",
     "version": "0.1.0",
     "priority": 10,
     "blocks": ["imports", "state", "cause", "poke", "peek"],
@@ -208,8 +208,9 @@ neither.
 
 ## Migration: vesl-graft → settle-graft
 
-Phase 12A renames the `vesl-graft` package to `settle-graft` to align
-with the four-primitive taxonomy (mint / guard / settle / forge). The
-manifest moves from `vesl-graft.toml` to `settle-graft.toml`; `name`,
-`sentinel`s, and `body`s update accordingly. Phases 2–11 use the
-`vesl-graft` name throughout this doc's examples.
+Phase 12A (landed) renamed the `vesl-graft` package to `settle-graft`
+to align with the four-primitive taxonomy (mint / guard / settle /
+forge). The manifest moved from `vesl-graft.toml` to `settle-graft.toml`;
+`name`, `sentinel`s, and `body`s updated accordingly. Rust-side helper
+functions kept `build_vesl_*_poke` aliases marked `#[deprecated]` for
+one release cycle — callers should migrate to `build_settle_*_poke`.

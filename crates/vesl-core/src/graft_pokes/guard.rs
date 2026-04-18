@@ -4,7 +4,7 @@
 //! hull-id, then verify that hash-leaf(data) matches the registered
 //! root. No verify-gate (that's settle), no replay protection (that's
 //! settle), no crash-on-bad-leaf (the graft emits `%guard-checked
-//! ok=%.n` for mismatches; crash semantics live in vesl-graft).
+//! ok=%.n` for mismatches; crash semantics live in settle-graft).
 //!
 //! Pair with the `%guard-register` / `%guard-check` arms installed by
 //! `graft-inject`. Hull IDs route through `atom_from_u64` so callers

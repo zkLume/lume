@@ -1,7 +1,7 @@
 //! Settle-graft poke builders.
 //!
-//! Tagged in the graft namespace (`%vesl-register`, `%vesl-settle`,
-//! `%vesl-verify`), distinct from the RAG-flavored `%register` /
+//! Tagged in the graft namespace (`%settle-register`, `%settle-note`,
+//! `%settle-verify`), distinct from the RAG-flavored `%register` /
 //! `%settle` / `%prove` pokes in `crate::settle`. Use these when wiring
 //! a kernel that was composed via `graft-inject` — the marker injection
 //! emits `?-` arms matching these tags.
@@ -11,14 +11,15 @@
 //! constructor. Note IDs likewise — settled note IDs are usually
 //! `hash-leaf(jam(payload))` which exceeds `DIRECT_MAX`.
 //!
-//! The wire shape (`[%vesl-* payload=@]`) is unchanged by the H-03
+//! The wire shape (`[%settle-* payload=@]`) is unchanged by the H-03
 //! audit fix to `verify-gate` — the graft itself extracts `note-id`
 //! from the payload and passes it to the gate.
 //!
-//! Phase 12A renames these to `build_settle_register_poke`,
-//! `build_settle_note_poke`, `build_settle_verify_poke` (matching the
-//! `%settle-*` cause-tag rename) with deprecated re-exports for one
-//! release cycle.
+//! Phase 12A renamed the primitive from `vesl-graft` to `settle-graft`
+//! across the Hoon + Rust surface. Deprecated `build_vesl_*_poke`
+//! aliases are kept for one release cycle in `crate::lib`.
+//!  `%vesl-settle` → `%settle-note` drops the tautological
+//! `%settle-settle` and avoids collision with `%mint-commit`.
 
 use nock_noun_rs::{
     atom_from_u64, jam_to_bytes, make_atom_in, make_tag_in, new_stack, NounSlab,
@@ -26,12 +27,12 @@ use nock_noun_rs::{
 use nockchain_tip5_rs::{tip5_to_atom_le_bytes, Tip5Hash};
 use nockvm::noun::{Noun, T};
 
-/// Build a `[%vesl-register hull=@ root=@]` poke.
+/// Build a `[%settle-register hull=@ root=@]` poke.
 ///
-/// Pair with the `%vesl-register` arm installed by `graft-inject`.
-pub fn build_vesl_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
+/// Pair with the `%settle-register` arm installed by `graft-inject`.
+pub fn build_settle_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
     let mut slab = NounSlab::new();
-    let tag = make_tag_in(&mut slab, "vesl-register");
+    let tag = make_tag_in(&mut slab, "settle-register");
     let hull_noun = atom_from_u64(&mut slab, hull);
     let root_bytes = tip5_to_atom_le_bytes(root);
     let root_noun = make_atom_in(&mut slab, &root_bytes);
@@ -40,34 +41,75 @@ pub fn build_vesl_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
     slab
 }
 
-/// Build a `[%vesl-settle jammed-graft-payload]` poke for a single-leaf
+/// Build a `[%settle-note jammed-graft-payload]` poke for a single-leaf
 /// commitment.
 ///
 /// `data` is the raw payload bytes the default hash-gate will hash and
 /// compare against the registered root. For single-leaf commits, the
 /// registered root equals `hash-leaf(data)`.
+pub fn build_settle_note_poke(
+    note_id: u64,
+    hull: u64,
+    root: &Tip5Hash,
+    data: &[u8],
+) -> NounSlab {
+    build_settle_payload_poke("settle-note", note_id, hull, root, data)
+}
+
+/// Build a `[%settle-verify jammed-graft-payload]` poke for a single-leaf
+/// commitment. Same payload shape as `settle-note` but pure verification:
+/// no state transition, no replay check.
+pub fn build_settle_verify_poke(
+    note_id: u64,
+    hull: u64,
+    root: &Tip5Hash,
+    data: &[u8],
+) -> NounSlab {
+    build_settle_payload_poke("settle-verify", note_id, hull, root, data)
+}
+
+// -- deprecated aliases (Phase 12A) --------------------------------------
+
+/// Deprecated alias for [`build_settle_register_poke`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed in Phase 12A; use build_settle_register_poke"
+)]
+pub fn build_vesl_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
+    build_settle_register_poke(hull, root)
+}
+
+/// Deprecated alias for [`build_settle_note_poke`] (the `%vesl-settle`
+/// cause became `%settle-note` in Phase 12A — the new name emphasizes
+/// "settle the note" and avoids the tautological `%settle-settle`).
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed in Phase 12A; use build_settle_note_poke"
+)]
 pub fn build_vesl_settle_poke(
     note_id: u64,
     hull: u64,
     root: &Tip5Hash,
     data: &[u8],
 ) -> NounSlab {
-    build_vesl_payload_poke("vesl-settle", note_id, hull, root, data)
+    build_settle_note_poke(note_id, hull, root, data)
 }
 
-/// Build a `[%vesl-verify jammed-graft-payload]` poke for a single-leaf
-/// commitment. Same payload shape as `vesl-settle` but pure verification:
-/// no state transition, no replay check.
+/// Deprecated alias for [`build_settle_verify_poke`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed in Phase 12A; use build_settle_verify_poke"
+)]
 pub fn build_vesl_verify_poke(
     note_id: u64,
     hull: u64,
     root: &Tip5Hash,
     data: &[u8],
 ) -> NounSlab {
-    build_vesl_payload_poke("vesl-verify", note_id, hull, root, data)
+    build_settle_verify_poke(note_id, hull, root, data)
 }
 
-fn build_vesl_payload_poke(
+fn build_settle_payload_poke(
     verb: &str,
     note_id: u64,
     hull: u64,
@@ -88,7 +130,7 @@ fn build_vesl_payload_poke(
 }
 
 /// Build a single-leaf `graft-payload` noun in `slab`. Shape matches
-/// `vesl-graft.hoon`'s `+$graft-payload`:
+/// `settle-graft.hoon`'s `+$graft-payload`:
 ///
 /// ```text
 /// [note=[id=@ hull=@ root=@ state=[%pending ~]] data=@ expected-root=@]
@@ -124,42 +166,42 @@ mod tests {
     }
 
     #[test]
-    fn build_vesl_register_poke_emits_nonempty_jam() {
-        let slab = build_vesl_register_poke(1, &fixture_root());
+    fn build_settle_register_poke_emits_nonempty_jam() {
+        let slab = build_settle_register_poke(1, &fixture_root());
         let mut stack = new_stack();
         let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
         assert!(!bytes.is_empty());
     }
 
     #[test]
-    fn build_vesl_settle_poke_emits_nonempty_jam() {
+    fn build_settle_note_poke_emits_nonempty_jam() {
         let root = fixture_root();
-        let slab = build_vesl_settle_poke(101, 1, &root, b"hello world");
+        let slab = build_settle_note_poke(101, 1, &root, b"hello world");
         let mut stack = new_stack();
         let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
         assert!(!bytes.is_empty());
     }
 
     #[test]
-    fn build_vesl_verify_poke_emits_nonempty_jam() {
+    fn build_settle_verify_poke_emits_nonempty_jam() {
         let root = fixture_root();
-        let slab = build_vesl_verify_poke(101, 1, &root, b"hello world");
+        let slab = build_settle_verify_poke(101, 1, &root, b"hello world");
         let mut stack = new_stack();
         let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
         assert!(!bytes.is_empty());
     }
 
     #[test]
-    fn settle_and_verify_pokes_share_payload_bytes() {
+    fn note_and_verify_pokes_share_payload_bytes() {
         // Same wire shape, only the verb tag differs — the jammed payload
         // bytes inside the cell must match.
         let root = fixture_root();
-        let s = build_vesl_settle_poke(7, 3, &root, b"x");
-        let v = build_vesl_verify_poke(7, 3, &root, b"x");
+        let s = build_settle_note_poke(7, 3, &root, b"x");
+        let v = build_settle_verify_poke(7, 3, &root, b"x");
 
         // Pull the second slot (the jammed payload) from each NounSlab.
         let s_payload = unsafe {
-            let cell = (*s.root()).as_cell().expect("settle poke is a cell");
+            let cell = (*s.root()).as_cell().expect("note poke is a cell");
             jam_to_bytes(&mut new_stack(), cell.tail())
         };
         let v_payload = unsafe {
@@ -174,7 +216,24 @@ mod tests {
         // hash-derived hulls routinely exceed DIRECT_MAX (2^63 - 1).
         // atom_from_u64 must route through a real atom alloc.
         let hull = u64::MAX - 7;
-        let _slab = build_vesl_register_poke(hull, &fixture_root());
-        let _slab2 = build_vesl_settle_poke(u64::MAX - 11, hull, &fixture_root(), b"x");
+        let _slab = build_settle_register_poke(hull, &fixture_root());
+        let _slab2 = build_settle_note_poke(u64::MAX - 11, hull, &fixture_root(), b"x");
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_aliases_match_canonical_output() {
+        let root = fixture_root();
+        let a = build_vesl_register_poke(1, &root);
+        let b = build_settle_register_poke(1, &root);
+        let ab = jam_to_bytes(&mut new_stack(), unsafe { *a.root() });
+        let bb = jam_to_bytes(&mut new_stack(), unsafe { *b.root() });
+        assert_eq!(ab, bb);
+
+        let c = build_vesl_settle_poke(7, 3, &root, b"x");
+        let d = build_settle_note_poke(7, 3, &root, b"x");
+        let cb = jam_to_bytes(&mut new_stack(), unsafe { *c.root() });
+        let db = jam_to_bytes(&mut new_stack(), unsafe { *d.root() });
+        assert_eq!(cb, db);
     }
 }

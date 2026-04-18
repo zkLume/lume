@@ -9,10 +9,10 @@
 ::    mint-graft  — commit a root under a hull-id. No verify.
 ::    guard-graft — commit a root + verify hash-leaf(data) == root.
 ::                  No gate, no replay protection.
-::    vesl-graft  — full verify-gate lifecycle with replay protection.
+::    settle-graft  — full verify-gate lifecycle with replay protection.
 ::
 ::  Registration is one-shot per hull, mirroring mint-graft and
-::  vesl-graft (AUDIT 2026-04-17 M-01). Once a hull-id is registered
+::  settle-graft (AUDIT 2026-04-17 M-01). Once a hull-id is registered
 ::  with a root, that mapping is immutable for the lifetime of the
 ::  graft state. A signature-gated revoke/rotate cause is future work.
 ::
@@ -45,7 +45,7 @@
 ::
 ::  +roots-cap: upper bound on the `roots` map.
 ::
-::  Mirror of vesl-graft's registered-cap (AUDIT 2026-04-17 H-02).
+::  Mirror of settle-graft's registered-cap (AUDIT 2026-04-17 H-02).
 ::  Without a cap, a caller who can poke %guard-register cheaply can
 ::  grow state without bound. 10M is the static cap.
 ::
@@ -95,7 +95,7 @@
     ::  Soft check: unregistered hull returns %guard-error (not a
     ::  crash). Successful hash match emits [%guard-checked hull %.y];
     ::  mismatch emits [%guard-checked hull %.n]. Callers that want
-    ::  crash-on-bad-leaf semantics should use vesl-graft with its
+    ::  crash-on-bad-leaf semantics should use settle-graft with its
     ::  verify-gate instead.
     ::
       %guard-check

@@ -19,46 +19,46 @@ The kernel has two layers:
 - `/count` — how many notes
 
 **Grafted verification** (Vesl's):
-- `%vesl-register hull root` — register a Merkle root
-- `%vesl-verify payload` — verify a manifest against a registered root
-- `%vesl-settle payload` — verify + settle a note
-- `/vesl-registered/<hull>` — is this hull registered?
-- `/vesl-root/<hull>` — what root did this hull register?
+- `%settle-register hull root` — register a Merkle root
+- `%settle-verify payload` — verify a manifest against a registered root
+- `%settle-note payload` — verify + settle a note
+- `/settle-registered/<hull>` — is this hull registered?
+- `/settle-root/<hull>` — what root did this hull register?
 
-Zero verification code in the kernel. The `++poke` arm delegates `%vesl-*` causes to `vesl-poke` from `vesl-graft.hoon`. Three lines per cause.
+Zero verification code in the kernel. The `++poke` arm delegates `%settle-*` causes to `settle-poke` from `settle-graft.hoon`. Three lines per cause.
 
 ## The Pattern
 
-In your kernel's state, compose `vesl-state`:
+In your kernel's state, compose `settle-state`:
 
 ```hoon
 +$  versioned-state
   $:  %v1
-      vesl=vesl-state          :: grafted
-      notes=(map @t @t)        :: yours
+      settle=settle-state       :: grafted
+      notes=(map @t @t)         :: yours
   ==
 ```
 
 In your poke arm, delegate:
 
 ```hoon
-  %vesl-register
-=/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+  %settle-register
+=/  lc=settle-cause  [%settle-register hull.u.act root.u.act]
 =/  rag-gate=verify-gate
   |=  [note-id=@ data=* expected-root=@]
   ^-  ?
   =/  mani  ;;(manifest data)
   (verify-manifest mani expected-root)
-=/  [efx=(list vesl-effect) new-vesl=vesl-state]
-  (vesl-poke vesl.state lc rag-gate)
-:_  state(vesl new-vesl)
+=/  [efx=(list settle-effect) new-settle=settle-state]
+  (settle-poke settle.state lc rag-gate)
+:_  state(settle new-settle)
 ^-  (list effect)  efx
 ```
 
 In your peek arm, fall through:
 
 ```hoon
-?+  path  (vesl-peek vesl.state path)
+?+  path  (settle-peek settle.state path)
   [%note key=@t ~]  ...your peeks...
 ==
 ```
@@ -70,7 +70,7 @@ That's the Graft. Your domain logic stays clean. Vesl verification is composable
 The Rust driver demonstrates the Mint + Guard workflow:
 
 1. **Mint** builds a Merkle tree from your data and gives you a root + proofs
-2. You poke `%vesl-register` to tell the kernel about the root
+2. You poke `%settle-register` to tell the kernel about the root
 3. **Guard** verifies individual proofs against the root (local, no kernel needed)
 
 ## Build & Run
@@ -93,7 +93,7 @@ cargo run
 ```
 hoon/
   app/app.hoon          — the kernel (domain + graft)
-  lib/vesl-graft.hoon   — composable state and poke dispatcher
+  lib/settle-graft.hoon — composable state and poke dispatcher
   lib/rag-logic.hoon   — RAG verification gates
   lib/vesl-merkle.hoon  — Merkle primitives (tip5)
   sur/vesl.hoon          — type definitions

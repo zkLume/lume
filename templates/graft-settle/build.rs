@@ -4,7 +4,7 @@ use std::{env, fs};
 
 fn main() {
     println!("cargo:rerun-if-changed=hoon/app/app.hoon");
-    println!("cargo:rerun-if-changed=hoon/lib/vesl-graft.hoon");
+    println!("cargo:rerun-if-changed=hoon/lib/settle-graft.hoon");
     println!("cargo:rerun-if-changed=hoon/lib/rag-logic.hoon");
     println!("cargo:rerun-if-changed=hoon/lib/vesl-merkle.hoon");
     println!("cargo:rerun-if-changed=hoon/sur/vesl.hoon");

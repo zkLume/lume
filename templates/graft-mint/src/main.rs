@@ -58,14 +58,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let hull_id: u64 = 1;
     {
         let mut slab = NounSlab::new();
-        let tag = make_tag_in(&mut slab, "vesl-register");
+        let tag = make_tag_in(&mut slab, "settle-register");
         let root_bytes = tip5_to_atom_le_bytes(&root);
         let root_atom = make_atom_in(&mut slab, &root_bytes);
         let poke = T(&mut slab, &[tag, D(hull_id), root_atom]);
         slab.set_root(poke);
 
         let effects = app.poke(SystemWire.to_wire(), slab).await?;
-        print_effects(&effects, "vesl-register");
+        print_effects(&effects, "settle-register");
     }
 
     // --- guard: verify proofs locally ---

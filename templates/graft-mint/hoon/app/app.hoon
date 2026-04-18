@@ -1,33 +1,33 @@
-::  graft-mint — NockApp with Vesl Mint + Guard tiers
+::  graft-mint — NockApp with Vesl settle tier
 ::
 ::  A note store with Merkle commitment verification grafted on.
 ::  Your domain logic (%put, %del) lives next to Vesl verification
-::  (%vesl-register, %vesl-verify) in the same kernel.  Zero
+::  (%settle-register, %settle-verify) in the same kernel.  Zero
 ::  verification code written — the Graft handles it.
 ::
-::  This is the pattern: compose vesl-state into your state,
-::  delegate tagged pokes to vesl-poke, done.
+::  This is the pattern: compose settle-state into your state,
+::  delegate tagged pokes to settle-poke, done.
 ::
 ::  Demonstrates:
-::    - composing vesl-state into versioned-state
-::    - delegating %vesl-* pokes to the Graft
-::    - delegating /vesl-registered and /vesl-root peeks to the Graft
+::    - composing settle-state into versioned-state
+::    - delegating %settle-* pokes to the Graft
+::    - delegating /settle-registered and /settle-root peeks to the Graft
 ::    - domain logic alongside verification logic
 ::
 ::  Compile: hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
 ::
 /-  *vesl
-/+  *vesl-graft
+/+  *settle-graft
 /+  *rag-logic
 /=  *  /common/wrapper
 ::
 =>
 |%
-::  kernel state — domain state + grafted Vesl state
+::  kernel state — domain state + grafted settle state
 ::
 +$  versioned-state
   $:  %v1
-      vesl=vesl-state
+      settle=settle-state
       notes=(map @t @t)
   ==
 ::
@@ -36,7 +36,7 @@
 +$  cause
   $%  [%put key=@t val=@t]
       [%del key=@t]
-      vesl-cause
+      settle-cause
   ==
 --
 |%
@@ -49,14 +49,14 @@
     |=  old-state=versioned-state
     ^-  _state
     old-state
-  ::  +peek: query domain state or Vesl state
+  ::  +peek: query domain state or settle state
   ::    domain peeks: /note/<key>, /count
-  ::    graft peeks:  /vesl-registered/<hull>, /vesl-root/<hull>
+  ::    graft peeks:  /settle-registered/<hull>, /settle-root/<hull>
   ::
   ++  peek
     |=  =path
     ^-  (unit (unit *))
-    ?+  path  (vesl-peek vesl.state path)
+    ?+  path  (settle-peek settle.state path)
       [%note key=@t ~]
         =/  k  +<.path
         ``(~(get by notes.state) k)
@@ -64,7 +64,7 @@
       [%count ~]
         ``~(wyt by notes.state)
     ==
-  ::  +poke: handle domain mutations and Vesl pokes
+  ::  +poke: handle domain mutations and settle pokes
   ::
   ++  poke
     |=  =ovum:moat
@@ -92,46 +92,46 @@
       ~[[%deleted key.u.act]]
       ::
       ::  --- grafted verification ---
-      ::  everything below is delegation.  vesl-poke handles
+      ::  everything below is delegation.  settle-poke handles
       ::  the verification logic, we just wire state in and out.
       ::  the RAG gate casts opaque data to a manifest and verifies it.
       ::
-        %vesl-register
-      =/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+        %settle-register
+      =/  lc=settle-cause  [%settle-register hull.u.act root.u.act]
       =/  rag-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =/  mani  ;;(manifest data)
         (verify-manifest mani expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc rag-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc rag-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
       ::
-        %vesl-verify
-      =/  lc=vesl-cause  [%vesl-verify payload.u.act]
+        %settle-verify
+      =/  lc=settle-cause  [%settle-verify payload.u.act]
       =/  rag-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =/  mani  ;;(manifest data)
         (verify-manifest mani expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc rag-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc rag-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
       ::
-        %vesl-settle
-      =/  lc=vesl-cause  [%vesl-settle payload.u.act]
+        %settle-note
+      =/  lc=settle-cause  [%settle-note payload.u.act]
       =/  rag-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =/  mani  ;;(manifest data)
         (verify-manifest mani expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc rag-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc rag-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
     ==
