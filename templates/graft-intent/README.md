@@ -2,6 +2,10 @@
 
 A NockApp with a custom (non-RAG) verification gate grafted in.
 
+## About this template
+
+Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+
 ## Why This Exists
 
 `graft-mint` and `graft-settle` use RAG verification — manifests, Merkle proofs, prompt reconstruction. That's one gate. The Graft doesn't care what your gate does. This template proves it.

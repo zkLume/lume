@@ -2,6 +2,10 @@
 
 A NockApp with Vesl's Mint + Guard tiers grafted in.
 
+## About this template
+
+Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+
 ## Why This Exists
 
 You have a NockApp. You want to add Merkle commitment and verification to it. You don't want to write any verification logic. The Graft pattern lets you compose Vesl's verification state and poke handlers into your kernel alongside your domain logic.

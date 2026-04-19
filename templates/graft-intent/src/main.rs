@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fs::read("out.jam").map_err(|e| format!("Failed to read out.jam: {}", e))?;
 
     let mut app: NockApp =
-        boot::setup(&kernel, cli, &[], "{{project_name}}", None).await?;
+        boot::setup(&kernel, cli, &[], "graft-intent", None).await?;
 
     // --- step 1: declare intents (domain logic) ---
 

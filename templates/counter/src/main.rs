@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map_err(|e| format!("Failed to read out.jam: {}", e))?;
 
     let mut app: NockApp =
-        boot::setup(&kernel, cli, &[], "{{project_name}}", None).await?;
+        boot::setup(&kernel, cli, &[], "counter", None).await?;
 
     // Increment 3 times
     for i in 0..3 {

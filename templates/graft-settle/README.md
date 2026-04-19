@@ -2,6 +2,10 @@
 
 A NockApp with Vesl's full settlement tier grafted in.
 
+## About this template
+
+Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+
 ## Why This Exists
 
 `graft-mint` grafts commitment and verification. This template goes further: it grafts **Settle** — full settlement lifecycle with replay protection. Notes transition from `%pending` to `%settled` and can never be settled twice.
