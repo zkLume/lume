@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let hull_id: u64 = 1;
     {
         let mut slab = NounSlab::new();
-        let tag = make_tag_in(&mut slab, "vesl-register");
+        let tag = make_tag_in(&mut slab, "settle-register");
         let root_bytes = tip5_to_atom_le_bytes(&root);
         let root_atom = make_atom_in(&mut slab, &root_bytes);
         // atom_from_u64 handles values above DIRECT_MAX (2^63 − 1); prefer it
@@ -77,12 +77,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         slab.set_root(poke);
 
         let effects = app.poke(SystemWire.to_wire(), slab).await?;
-        print_effects(&effects, "vesl-register");
+        print_effects(&effects, "settle-register");
     }
 
     // --- step 5: settle ---
     //
-    // Build a graft-payload, jam it, send as %vesl-settle.
+    // Build a graft-payload, jam it, send as %settle-note.
     // The hash gate needs a single-leaf tree (root == hash-leaf(data)).
 
     println!("\n=== step 5: settlement ===\n");
@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let settle_hull: u64 = 2;
     {
         let mut slab = NounSlab::new();
-        let tag = make_tag_in(&mut slab, "vesl-register");
+        let tag = make_tag_in(&mut slab, "settle-register");
         let rb = tip5_to_atom_le_bytes(&single_root);
         let root_atom = make_atom_in(&mut slab, &rb);
         let hull = atom_from_u64(&mut slab, settle_hull);
@@ -118,18 +118,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let exp_root = make_atom_in(&mut slab, &rb);
         let payload_noun = T(&mut slab, &[note, data, exp_root]);
 
-        // Jam the payload and send as [%vesl-settle jammed]
+        // Jam the payload and send as [%settle-note jammed]
         let payload_bytes = {
             let mut stack = new_stack();
             jam_to_bytes(&mut stack, payload_noun)
         };
         let jammed = make_atom_in(&mut slab, &payload_bytes);
-        let tag = make_tag_in(&mut slab, "vesl-settle");
+        let tag = make_tag_in(&mut slab, "settle-note");
         let poke = T(&mut slab, &[tag, jammed]);
         slab.set_root(poke);
 
         let effects = app.poke(SystemWire.to_wire(), slab).await?;
-        print_effects(&effects, "vesl-settle");
+        print_effects(&effects, "settle-note");
     }
 
     // --- step 6: replay protection ---
@@ -155,7 +155,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             jam_to_bytes(&mut stack, payload_noun)
         };
         let jammed = make_atom_in(&mut slab, &payload_bytes);
-        let tag = make_tag_in(&mut slab, "vesl-settle");
+        let tag = make_tag_in(&mut slab, "settle-note");
         let poke = T(&mut slab, &[tag, jammed]);
         slab.set_root(poke);
 

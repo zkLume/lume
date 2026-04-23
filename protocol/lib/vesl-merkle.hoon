@@ -5,6 +5,28 @@
 ::  Import this for Merkle commitment, leaf hashing, and proof
 ::  verification in any verification gate.
 ::
+::  Shared-merkle surface — the following arms are the stable
+::  primitives every graft (mint, guard, settle, forge) reuses.
+::  Do not rename or reshape without coordinating across all
+::  four primitives; the graft-inject manifest imports block
+::  pastes `/+  *vesl-merkle` into composed kernels under the
+::  assumption that these arms exist by these names.
+::
+::    hash-leaf       tip5 hash of raw atom data.  Used by mint
+::                    for commitment, by guard for leaf check,
+::                    by settle's default verify-gate, by forge
+::                    for Fiat-Shamir leaf binding.
+::    hash-pair       tip5 pair hash of two digest atoms.  Used
+::                    inside verify-chunk and by any graft that
+::                    folds up an internal Merkle node.
+::    verify-chunk    prove a chunk is bound to a Merkle root via
+::                    a sibling-hash proof.  Depth-capped at 64.
+::    split-to-belts  atom -> 7-byte field-element list.  Used by
+::                    forge's belt-digest fold and by any gate that
+::                    wants to hash cell-shaped data as a flat atom.
+::    belts-to-atom   inverse of split-to-belts.  Used by Rust-side
+::                    reconstruction paths that consume belt lists.
+::
 /=  *  /common/zeke
 ::
 |%

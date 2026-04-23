@@ -1,0 +1,44 @@
+# mint-graft manifest — hull-keyed commitment trellis.
+#
+# Ships the mint primitive as a composable graft. Priority 20 sits
+# between settle (10) and guard (30) in the commitment lane.
+# `after = ["settle-graft"]` keeps settle's state field first in the
+# host kernel's versioned-state for kernels that install both —
+# settle is the heavier primitive and readers tend to reach for
+# its fields first.
+
+[graft]
+name     = "mint-graft"
+version  = "0.1.0"
+priority = 20
+after    = ["settle-graft"]
+
+[graft.blocks.imports]
+sentinel = "*mint-graft"
+body     = """
+/+  *mint-graft
+/+  *vesl-merkle"""
+
+[graft.blocks.state]
+sentinel = "mint=mint-state"
+body     = "mint=mint-state"
+
+[graft.blocks.cause]
+sentinel = "mint-cause"
+body     = "mint-cause"
+
+[graft.blocks.poke]
+sentinel = "%mint-commit"
+body     = """
+::
+  %mint-commit
+=/  lc=mint-cause  [%mint-commit hull.u.act root.u.act]
+=/  [efx=(list mint-effect) new-mint=mint-state]
+  (mint-poke mint.state lc)
+:_  state(mint new-mint)
+^-  (list effect)
+efx"""
+
+[graft.blocks.peek]
+sentinel = "mint-peek"
+body     = "(mint-peek mint.state path)"

@@ -478,7 +478,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for h in &hits {
         let preview = &chunks[h.chunk_index].dat;
         let short = if preview.len() > 60 {
-            format!("{}...", &preview[..60])
+            format!("{}...", api::char_safe_prefix(preview, 60))
         } else {
             preview.clone()
         };

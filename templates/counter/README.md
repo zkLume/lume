@@ -2,6 +2,10 @@
 
 A counter. The simplest stateful NockApp that does anything useful.
 
+## About this template
+
+Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+
 ## Why This Exists
 
 Every NockApp tutorial starts with "here's how to print hello world" and then jumps to "here's a 4000-line wallet." This template is the missing middle: state that persists, mutations that produce effects, queries that don't mutate.

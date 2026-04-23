@@ -9,7 +9,7 @@
 /-  *vesl
 /+  *vesl-merkle
 /+  *rag-logic
-/+  *vesl-graft
+/+  *settle-graft
 ::
 ::  ============================================
 ::  SETUP: Build two valid Merkle trees
@@ -51,7 +51,7 @@
 =/  valid-mani
   [query=query results=results prompt=valid-prompt output='Based on your Q3 data...' page=0]
 ::
-::  RAG verification gate — wraps verify-manifest for vesl-poke
+::  RAG verification gate — wraps verify-manifest for settle-poke
 ::
 =/  rag-gate=verify-gate
   |=  [note-id=@ data=* expected-root=@]
@@ -65,20 +65,20 @@
 ::
 ::  Register hull=7 with root-a
 ::
-=/  st=vesl-state  new-state
-=/  reg-result  (vesl-poke st [%vesl-register hull=7 root=root-a] rag-gate)
+=/  st=settle-state  new-state
+=/  reg-result  (settle-poke st [%settle-register hull=7 root=root-a] rag-gate)
 =/  st  +.reg-result
 ::
 ::  Attempt to re-register hull=7 with root-b — must be rejected
 ::
-=/  overwrite-result  (vesl-poke st [%vesl-register hull=7 root=root-b] rag-gate)
+=/  overwrite-result  (settle-poke st [%settle-register hull=7 root=root-b] rag-gate)
 =/  overwrite-effects  -.overwrite-result
 =/  overwrite-state  +.overwrite-result
 ::
 ::  Effect must be an error
 ::
 ?>  ?=(^ overwrite-effects)
-?>  ?=(%vesl-error -.i.overwrite-effects)
+?>  ?=(%settle-error -.i.overwrite-effects)
 ::
 ::  State must be unchanged — hull=7 still maps to root-a
 ::
@@ -93,25 +93,25 @@
 ::
 =/  pending-note  [id=42 hull=7 root=root-a state=[%pending ~]]
 =/  bad-root-payload=@  (jam [pending-note valid-mani root-b])
-=/  mismatch-result  (vesl-poke st [%vesl-settle payload=bad-root-payload] rag-gate)
+=/  mismatch-result  (settle-poke st [%settle-note payload=bad-root-payload] rag-gate)
 =/  mismatch-effects  -.mismatch-result
 ::
-::  Must get %vesl-error for root mismatch, not a settlement
+::  Must get %settle-error for root mismatch, not a settlement
 ::
 ?>  ?=(^ mismatch-effects)
-?>  ?=(%vesl-error -.i.mismatch-effects)
+?>  ?=(%settle-error -.i.mismatch-effects)
 ::
 ::  ============================================
 ::  TEST 3: Verify with mismatched root — must reject
 ::  ============================================
 ::
-=/  ver-mismatch-result  (vesl-poke st [%vesl-verify payload=bad-root-payload] rag-gate)
+=/  ver-mismatch-result  (settle-poke st [%settle-verify payload=bad-root-payload] rag-gate)
 =/  ver-mismatch-effects  -.ver-mismatch-result
 ::
-::  Must get %vesl-verified %.n (not %.y)
+::  Must get %settle-verified %.n (not %.y)
 ::
 ?>  ?=(^ ver-mismatch-effects)
-?>  ?=(%vesl-verified -.i.ver-mismatch-effects)
+?>  ?=(%settle-verified -.i.ver-mismatch-effects)
 ?>  =(%.n ok.i.ver-mismatch-effects)
 ::
 ::  ============================================
@@ -121,14 +121,14 @@
 ::  Build payload with correct root-a
 ::
 =/  good-payload=@  (jam [pending-note valid-mani root-a])
-=/  good-result  (vesl-poke st [%vesl-settle payload=good-payload] rag-gate)
+=/  good-result  (settle-poke st [%settle-note payload=good-payload] rag-gate)
 =/  good-effects  -.good-result
 =/  st  +.good-result
 ::
-::  Must succeed with %vesl-settled
+::  Must succeed with %settle-noted
 ::
 ?>  ?=(^ good-effects)
-?>  ?=(%vesl-settled -.i.good-effects)
+?>  ?=(%settle-noted -.i.good-effects)
 ?>  =(42 id.note.i.good-effects)
 ?>  =(7 hull.note.i.good-effects)
 ?>  =([%settled ~] state.note.i.good-effects)
@@ -139,28 +139,28 @@
 ::
 ::  Fresh state — simulate the full V-001 attack
 ::
-=/  st2=vesl-state  new-state
+=/  st2=settle-state  new-state
 ::
 ::  Step 1: Legitimate registration
 ::
-=/  legit-reg  (vesl-poke st2 [%vesl-register hull=7 root=root-a] rag-gate)
+=/  legit-reg  (settle-poke st2 [%settle-register hull=7 root=root-a] rag-gate)
 =/  st2  +.legit-reg
 ::
 ::  Step 2: Attacker tries to overwrite — must fail
 ::
-=/  attack-reg  (vesl-poke st2 [%vesl-register hull=7 root=root-b] rag-gate)
+=/  attack-reg  (settle-poke st2 [%settle-register hull=7 root=root-b] rag-gate)
 =/  attack-effects  -.attack-reg
 ?>  ?=(^ attack-effects)
-?>  ?=(%vesl-error -.i.attack-effects)
+?>  ?=(%settle-error -.i.attack-effects)
 ::
 ::  Step 3: Attacker tries to settle with root-b — must fail
 ::
 =/  attack-note  [id=1 hull=7 root=root-b state=[%pending ~]]
 =/  attack-payload=@  (jam [attack-note valid-mani root-b])
-=/  attack-settle  (vesl-poke st2 [%vesl-settle payload=attack-payload] rag-gate)
+=/  attack-settle  (settle-poke st2 [%settle-note payload=attack-payload] rag-gate)
 =/  settle-effects  -.attack-settle
 ?>  ?=(^ settle-effects)
-?>  ?=(%vesl-error -.i.settle-effects)
+?>  ?=(%settle-error -.i.settle-effects)
 ::
 ::  Confirm hull=7 root is still root-a
 ::

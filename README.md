@@ -27,7 +27,7 @@ protocol/                       Hoon source
   lib/vesl-merkle.hoon            tip5 Merkle math
   lib/vesl-prover.hoon            STARK proof generation
   lib/vesl-verifier.hoon          STARK proof verification
-  lib/vesl-graft.hoon             gate-agnostic composition
+  lib/settle-graft.hoon           gate-agnostic composition
   lib/vesl-test.hoon              compile-time assertions
   sur/vesl.hoon                   types
 

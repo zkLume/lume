@@ -97,6 +97,12 @@
         :_  state
         ^-  (list effect)
         ~[[%verified %.n]]
+      ::  Guard: note header root must match expected root (H-07)
+      ::
+      ?.  =(root.note.args expected-root.args)
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
       ::
       =/  ok=?  (verify-manifest mani.args expected-root.args)
       :_  state

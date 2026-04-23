@@ -6,7 +6,7 @@
 ::
 ::  This is the Mint layer: the minimum viable integration for any
 ::  NockApp that wants to bind data to a Merkle tree and walk away.
-::  If you need to verify or settle, import rag-logic or vesl-graft.
+::  If you need to verify or settle, import rag-logic or settle-graft.
 ::
 ::  Re-exports split-to-belts, hash-leaf, hash-pair, verify-chunk
 ::  from vesl-merkle.

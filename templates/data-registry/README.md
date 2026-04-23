@@ -2,6 +2,10 @@
 
 A name-to-hash registry. Register data commitments, verify them later.
 
+## About this template
+
+Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+
 ## Why This Exists
 
 The pattern: "I committed to this data at time T, and I can prove it hasn't changed." This comes up everywhere — document hashes, configuration digests, model weights, audit logs. The kernel hashes your data with SHA-256 on registration, then verifies against the stored hash on demand.

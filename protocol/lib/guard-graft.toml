@@ -1,0 +1,59 @@
+# guard-graft manifest — hull-keyed root trellis + leaf-hash check.
+#
+# Priority 30 sits between mint (20) and forge (40) in the commitment
+# lane. `after = ["mint-graft"]` keeps the declared ordering consistent
+# with priority (injection order is already priority-driven; the hint
+# makes the intent explicit for readers).
+#
+# Two poke arms:
+#   %guard-register — append-only commit of a hull's Merkle root.
+#   %guard-check    — verify hash-leaf(data) against the registered
+#                     root. Emits %guard-checked with a loobean; no
+#                     crash on mismatch (use settle-graft for crash-on-
+#                     bad-verify semantics).
+#
+# Peek path: [%guard-root hull=@] returns the registered root or ~.
+
+[graft]
+name     = "guard-graft"
+version  = "0.1.0"
+priority = 30
+after    = ["mint-graft"]
+
+[graft.blocks.imports]
+sentinel = "*guard-graft"
+body     = """
+/+  *guard-graft
+/+  *vesl-merkle"""
+
+[graft.blocks.state]
+sentinel = "guard=guard-state"
+body     = "guard=guard-state"
+
+[graft.blocks.cause]
+sentinel = "guard-cause"
+body     = "guard-cause"
+
+[graft.blocks.poke]
+sentinel = "%guard-register"
+body     = """
+::
+  %guard-register
+=/  lc=guard-cause  [%guard-register hull.u.act root.u.act]
+=/  [efx=(list guard-effect) new-guard=guard-state]
+  (guard-poke guard.state lc)
+:_  state(guard new-guard)
+^-  (list effect)
+efx
+::
+  %guard-check
+=/  lc=guard-cause  [%guard-check hull.u.act data.u.act]
+=/  [efx=(list guard-effect) new-guard=guard-state]
+  (guard-poke guard.state lc)
+:_  state(guard new-guard)
+^-  (list effect)
+efx"""
+
+[graft.blocks.peek]
+sentinel = "guard-peek"
+body     = "(guard-peek guard.state path)"

@@ -57,9 +57,12 @@
     ::  reconstruct tree with value spliced at axis b
     ::
       %10
-    =/  b  -.-.+.f
-    =/  c  +.-.+.f
-    =/  d  +.+.f
+    ::  b is the edit axis; Nock 10 only makes sense with an atom
+    ::  axis, so cast explicitly. ;; crashes if `f` is malformed.
+    ::
+    =/  b=@  ;;(@ -.-.+.f)
+    =/  c    +.-.+.f
+    =/  d    +.+.f
     [%8 [(lower d) (lower c)] (make-edit b)]
     ::
     ::  [11 ...] — strip hints (semantically transparent)

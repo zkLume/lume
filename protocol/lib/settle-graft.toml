@@ -1,0 +1,70 @@
+# settle-graft manifest — primary commitment primitive.
+#
+# Gate signature is the post-H-03 [note-id=@ data=* expected-root=@]
+# form required by settle-graft.hoon's `verify-gate` type.
+#
+# Renamed from vesl-graft.toml in Phase 12A — see .dev/00_PARAMETIZATION.md.
+
+[graft]
+name     = "settle-graft"
+version  = "0.1.0"
+priority = 10
+after    = []
+
+[graft.blocks.imports]
+sentinel = "*settle-graft"
+body     = """
+/+  *settle-graft
+/+  *vesl-merkle"""
+
+[graft.blocks.state]
+sentinel = "settle=settle-state"
+body     = "settle=settle-state"
+
+[graft.blocks.cause]
+sentinel = "settle-cause"
+body     = "settle-cause"
+
+[graft.blocks.poke]
+sentinel = "%settle-register"
+body     = """
+::
+  %settle-register
+=/  lc=settle-cause  [%settle-register hull.u.act root.u.act]
+=/  hash-gate=verify-gate
+  |=  [note-id=@ data=* expected-root=@]
+  ^-  ?
+  =((hash-leaf ;;(@ data)) expected-root)
+=/  [efx=(list settle-effect) new-settle=settle-state]
+  (settle-poke settle.state lc hash-gate)
+:_  state(settle new-settle)
+^-  (list effect)
+efx
+::
+  %settle-verify
+=/  lc=settle-cause  [%settle-verify payload.u.act]
+=/  hash-gate=verify-gate
+  |=  [note-id=@ data=* expected-root=@]
+  ^-  ?
+  =((hash-leaf ;;(@ data)) expected-root)
+=/  [efx=(list settle-effect) new-settle=settle-state]
+  (settle-poke settle.state lc hash-gate)
+:_  state(settle new-settle)
+^-  (list effect)
+efx
+::
+  %settle-note
+=/  lc=settle-cause  [%settle-note payload.u.act]
+=/  hash-gate=verify-gate
+  |=  [note-id=@ data=* expected-root=@]
+  ^-  ?
+  =((hash-leaf ;;(@ data)) expected-root)
+=/  [efx=(list settle-effect) new-settle=settle-state]
+  (settle-poke settle.state lc hash-gate)
+:_  state(settle new-settle)
+^-  (list effect)
+efx"""
+
+[graft.blocks.peek]
+sentinel = "settle-peek"
+body     = "(settle-peek settle.state path)"

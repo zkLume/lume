@@ -1,18 +1,18 @@
 [package]
-name = "{{project_name}}"
+name = "data-registry"
 version = "0.1.0"
 edition = "2021"
-authors = ["{{author_name}} <{{author_email}}>"]
+authors = ["Vesl Examples <examples@vesl.local>"]
 description = "Data registry NockApp — hash-based data commitments"
 
 [[bin]]
-name = "{{project_name}}"
+name = "data-registry"
 path = "src/main.rs"
 
 [dependencies]
-nockapp = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
-nockvm = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
-nockvm_macros = { git = "https://github.com/nockchain/nockchain.git", rev = "{{nockapp_commit_hash}}" }
+nockapp = { git = "https://github.com/nockchain/nockchain.git", rev = "505c3ea586bacfece2d451fbd01dfa18105facea" }
+nockvm = { git = "https://github.com/nockchain/nockchain.git", rev = "505c3ea586bacfece2d451fbd01dfa18105facea" }
+nockvm_macros = { git = "https://github.com/nockchain/nockchain.git", rev = "505c3ea586bacfece2d451fbd01dfa18105facea" }
 
 tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }
 anyhow = "1.0"

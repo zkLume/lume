@@ -1,8 +1,8 @@
-::  lib/vesl-graft.hoon: gate-agnostic composable verification for any NockApp
+::  lib/settle-graft.hoon: gate-agnostic composable verification for any NockApp
 ::
 ::  The Graft is a library, not a kernel. It provides:
-::    1. A state fragment (vesl-state) you graft onto your kernel state
-::    2. A poke dispatcher for %vesl-register/%vesl-settle/%vesl-verify
+::    1. A state fragment (settle-state) you graft onto your kernel state
+::    2. A poke dispatcher for %settle-register/%settle-note/%settle-verify
 ::    3. A peek helper for querying registered/settled status
 ::
 ::  The caller passes a verify-gate — a function that takes opaque data
@@ -13,26 +13,26 @@
 ::  hull-id is registered with a root, that mapping is immutable for
 ::  the lifetime of the graft state — roots are treated as permanent
 ::  commitments. Legitimate key rotation currently requires a fresh
-::  deployment. A signature-gated `%vesl-revoke` / `%vesl-rotate` cause
-::  is tracked as future work in .dev/FUTURE_WORK.md.
+::  deployment. A signature-gated `%settle-revoke` / `%settle-rotate`
+::  cause is tracked as future work in .dev/FUTURE_WORK.md.
 ::
 ::  Usage:
-::    /+  *vesl-graft
+::    /+  *settle-graft
 ::    /+  *rag-logic    :: for RAG gate (or your own domain logic)
 ::    ...your kernel...
-::    +$  my-state  [vesl=vesl-state ...your-fields...]
+::    +$  my-state  [settle=settle-state ...your-fields...]
 ::    ...in poke arm...
 ::    =/  my-gate=verify-gate
 ::      |=  [data=* expected-root=@]
 ::      (verify-manifest ;;(manifest data) expected-root)
 ::    ?+  -.cause  [~ state]
-::      %vesl-register  (vesl-poke vesl.state cause my-gate)
-::      %vesl-settle    (vesl-poke vesl.state cause my-gate)
-::      %vesl-verify    (vesl-poke vesl.state cause my-gate)
+::      %settle-register  (settle-poke settle.state cause my-gate)
+::      %settle-note      (settle-poke settle.state cause my-gate)
+::      %settle-verify    (settle-poke settle.state cause my-gate)
 ::    ==
 ::
 |%
-::  +$vesl-state: the state fragment — graft this onto your kernel
+::  +$settle-state: the state fragment — graft this onto your kernel
 ::
 ::  AUDIT 2026-04-17 H-01: settled set rotates per epoch.
 ::    epoch          — current epoch number (starts 0, bumped on rotate)
@@ -45,7 +45,7 @@
 ::  `epoch-cap` (below), the next settle rotates: prior-settled :=
 ::  settled, settled := {new-id}, settle-count := 1, epoch += 1.
 ::
-+$  vesl-state
++$  settle-state
   $:  epoch=@
       registered=(map @ @)
       settled=(set @)
@@ -58,7 +58,7 @@
 ::  epoch/settle-count/prior-settled) doesn't break callers that use this.
 ::
 ++  new-state
-  ^-  vesl-state
+  ^-  settle-state
   :*  epoch=0
       registered=*(map @ @)
       settled=*(set @)
@@ -76,7 +76,7 @@
 ::  +registered-cap: upper bound on the `registered` map.
 ::
 ::  AUDIT 2026-04-17 H-02: without a cap, any caller who can poke
-::  %vesl-register cheaply can grow state without bound. 10M is the
+::  %settle-register cheaply can grow state without bound. 10M is the
 ::  static cap here — large enough that no legitimate deployment
 ::  hits it, small enough that a spammer can't brick kernel memory.
 ::  Future work: signed-envelope registration that requires a
@@ -114,53 +114,52 @@
 ::
 +$  verify-gate  $-([note-id=@ data=* expected-root=@] ?)
 ::
-::  +$vesl-effect: effects the Graft can produce
+::  +$settle-effect: effects the Graft can produce
 ::
-+$  vesl-effect
-  $%  [%vesl-registered hull=@ root=@]
-      [%vesl-settled note=[id=@ hull=@ root=@ state=[%settled ~]]]
-      [%vesl-verified ok=?]
-      [%vesl-epoch-rotated old-epoch=@ new-epoch=@]
-      [%vesl-error msg=@t]
++$  settle-effect
+  $%  [%settle-registered hull=@ root=@]
+      [%settle-noted note=[id=@ hull=@ root=@ state=[%settled ~]]]
+      [%settle-verified ok=?]
+      [%settle-epoch-rotated old-epoch=@ new-epoch=@]
+      [%settle-error msg=@t]
   ==
 ::
-::  +$vesl-cause: tagged pokes the Graft handles
+::  +$settle-cause: tagged pokes the Graft handles
 ::
-+$  vesl-cause
-  $%  [%vesl-register hull=@ root=@]
-      [%vesl-settle payload=@]
-      [%vesl-verify payload=@]
-      [%vesl-rotate-epoch ~]
++$  settle-cause
+  $%  [%settle-register hull=@ root=@]
+      [%settle-note payload=@]
+      [%settle-verify payload=@]
   ==
 ::
-::  +vesl-poke: dispatch a vesl cause against vesl state
+::  +settle-poke: dispatch a settle cause against settle state
 ::
 ::  Takes a verify-gate as third argument — the caller's domain
 ::  verification function.  Returns [effects updated-state].
 ::
-++  vesl-poke
-  |=  [state=vesl-state cause=vesl-cause veri=verify-gate]
-  ^-  [(list vesl-effect) vesl-state]
+++  settle-poke
+  |=  [state=settle-state cause=settle-cause veri=verify-gate]
+  ^-  [(list settle-effect) settle-state]
   ?-  -.cause
     ::
-    ::  %vesl-register — store hull root
+    ::  %settle-register — store hull root
     ::
-      %vesl-register
+      %settle-register
     ::  Guard: reject re-registration (hull already has a root; M-01)
     ::
     ?:  (~(has by registered.state) hull.cause)
       :_  state
-      ~[[%vesl-error 'vesl-graft: hull already registered']]
+      ~[[%settle-error 'settle-graft: hull already registered']]
     ::  Guard: registered map capacity (H-02)
     ::
     ?:  (gte ~(wyt by registered.state) registered-cap)
       :_  state
-      ~[[%vesl-error 'vesl-graft: registered map at capacity']]
+      ~[[%settle-error 'settle-graft: registered map at capacity']]
     =/  new-reg  (~(put by registered.state) hull.cause root.cause)
     :_  state(registered new-reg)
-    ~[[%vesl-registered hull.cause root.cause]]
+    ~[[%settle-registered hull.cause root.cause]]
     ::
-    ::  %vesl-settle — cue payload, validate, verify via gate, settle
+    ::  %settle-note — cue payload, validate, verify via gate, settle
     ::    Guards: root registered, roots match, replay protection.
     ::    AUDIT 2026-04-17 H-01: no permanent cap. At `epoch-cap`, the
     ::    settled set rotates — prior-settled := settled, settled := {id},
@@ -168,32 +167,32 @@
     ::    window is ~2x epoch-cap.
     ::    Crash semantics: ?> on gate failure = unprovable STARK.
     ::
-      %vesl-settle
+      %settle-note
     =/  raw=*  (cue payload.cause)
     =/  args=graft-payload  ;;(graft-payload raw)
     ::  Guard: reject unregistered roots
     ::
     ?.  (~(has by registered.state) hull.note.args)
       :_  state
-      ~[[%vesl-error 'vesl-graft: root not registered']]
+      ~[[%settle-error 'settle-graft: root not registered']]
     ::  Guard: expected root must match registered root
     ::
     ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
       :_  state
-      ~[[%vesl-error 'vesl-graft: root mismatch']]
+      ~[[%settle-error 'settle-graft: root mismatch']]
     ::  Guard: note header root must match expected root
     ::
     ?.  =(root.note.args expected-root.args)
       :_  state
-      ~[[%vesl-error 'vesl-graft: note root does not match expected root']]
+      ~[[%settle-error 'settle-graft: note root does not match expected root']]
     ::  Guard: replay protection — covers current AND prior epoch
     ::
     ?:  (~(has in settled.state) id.note.args)
       :_  state
-      ~[[%vesl-error 'vesl-graft: note already settled']]
+      ~[[%settle-error 'settle-graft: note already settled']]
     ?:  (~(has in prior-settled.state) id.note.args)
       :_  state
-      ~[[%vesl-error 'vesl-graft: note already settled (prior epoch)']]
+      ~[[%settle-error 'settle-graft: note already settled (prior epoch)']]
     ::  Verify via caller's gate — crash on failure
     ::
     ?>  (veri id.note.args data.args expected-root.args)
@@ -203,7 +202,7 @@
     ?.  at-cap
       =/  new-settled  (~(put in settled.state) id.note.args)
       :_  state(settled new-settled, settle-count +(settle-count.state))
-      ~[[%vesl-settled note=[id.note.args hull.note.args root.note.args [%settled ~]]]]
+      ~[[%settle-noted note=[id.note.args hull.note.args root.note.args [%settled ~]]]]
     ::  Rotation: prior-settled := settled; settled := {new-id}
     ::
     =/  old-epoch  epoch.state
@@ -216,85 +215,66 @@
         settle-count   1
       ==
     :_  rotated
-    :~  [%vesl-epoch-rotated old-epoch new-epoch]
-        [%vesl-settled note=[id.note.args hull.note.args root.note.args [%settled ~]]]
+    :~  [%settle-epoch-rotated old-epoch new-epoch]
+        [%settle-noted note=[id.note.args hull.note.args root.note.args [%settled ~]]]
     ==
     ::
-    ::  %vesl-verify — pure verification, no state transition
-    ::    Returns [%vesl-verified %.y] or [%vesl-verified %.n].
+    ::  %settle-verify — pure verification, no state transition
+    ::    Returns [%settle-verified %.y] or [%settle-verified %.n].
     ::
-      %vesl-verify
+      %settle-verify
     =/  raw=*  (cue payload.cause)
     =/  args=graft-payload  ;;(graft-payload raw)
     ::  Check registration
     ::
     ?.  (~(has by registered.state) hull.note.args)
       :_  state
-      ~[[%vesl-verified %.n]]
+      ~[[%settle-verified %.n]]
     ::  Guard: expected root must match registered root
     ::
     ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
       :_  state
-      ~[[%vesl-verified %.n]]
+      ~[[%settle-verified %.n]]
     ::  Guard: note header root must match expected root (H-04 parity
-    ::  with %vesl-settle). Without this, a caller polling verify can
+    ::  with %settle-note). Without this, a caller polling verify can
     ::  get a green light and then watch settle crash on a field verify
     ::  never inspected.
     ::
     ?.  =(root.note.args expected-root.args)
       :_  state
-      ~[[%vesl-verified %.n]]
+      ~[[%settle-verified %.n]]
     ::  Verify via caller's gate — soft failure (no crash)
     ::
     =/  ok=?  (veri id.note.args data.args expected-root.args)
     :_  state
-    ~[[%vesl-verified ok]]
-    ::
-    ::  %vesl-rotate-epoch — force rotation now (admin-initiated)
-    ::    No-auth by design: anyone who can poke the graft can force
-    ::    rotation. Worst-case impact: truncates the lookback window
-    ::    earlier than the count-based trigger would. Replay protection
-    ::    within the new current + prior pair remains intact.
-    ::
-      %vesl-rotate-epoch
-    =/  old-epoch  epoch.state
-    =/  new-epoch  +(old-epoch)
-    =/  rotated
-      %=  state
-        epoch          new-epoch
-        prior-settled  settled.state
-        settled        *(set @)
-        settle-count   0
-      ==
-    :_  rotated
-    ~[[%vesl-epoch-rotated old-epoch new-epoch]]
+    ~[[%settle-verified ok]]
   ==
 ::
-::  +vesl-peek: query vesl state by path
+::  +settle-peek: query settle state by path
 ::
 ::  Returns ~ for unrecognized paths (pass through to your kernel's peek).
 ::  Returns ``(unit) for recognized paths.
 ::
-++  vesl-peek
-  |=  [state=vesl-state =path]
+++  settle-peek
+  |=  [state=settle-state =path]
   ^-  (unit (unit *))
   ?+  path  ~
-    [%registered hull=@ ~]
+    [%settle-registered hull=@ ~]
       =/  vid  +<.path
       ``(~(has by registered.state) vid)
     ::
-    [%settled note-id=@ ~]
+    [%settle-noted note-id=@ ~]
       =/  nid  +<.path
       ::  Replay lookup must cover current + prior epoch.
       ::
       ?:  (~(has in settled.state) nid)  ``%.y
       ``(~(has in prior-settled.state) nid)
     ::
-    [%root hull=@ ~]
+    [%settle-root hull=@ ~]
       =/  vid  +<.path
       ``(~(get by registered.state) vid)
     ::
-    [%epoch ~]  ``epoch.state
+    [%settle-epoch ~]  ``epoch.state
     ::
     [%settle-count ~]  ``settle-count.state
   ==

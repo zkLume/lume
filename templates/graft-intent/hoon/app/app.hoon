@@ -18,17 +18,17 @@
 ::
 ::  Compile: hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
 ::
-/+  *vesl-graft
+/+  *settle-graft
 /+  *vesl-merkle
 /=  *  /common/wrapper
 ::
 =>
 |%
-::  kernel state — intents + grafted Vesl state
+::  kernel state — intents + grafted settle state
 ::
 +$  versioned-state
   $:  %v1
-      vesl=vesl-state
+      settle=settle-state
       intents=(map @ @t)
       intent-count=@ud
   ==
@@ -37,7 +37,7 @@
 ::
 +$  cause
   $%  [%declare intent=@t]
-      vesl-cause
+      settle-cause
   ==
 --
 |%
@@ -50,12 +50,12 @@
     |=  old-state=versioned-state
     ^-  _state
     old-state
-  ::  +peek: query intents or Vesl state
+  ::  +peek: query intents or settle state
   ::
   ++  peek
     |=  =path
     ^-  (unit (unit *))
-    ?+  path  (vesl-peek vesl.state path)
+    ?+  path  (settle-peek settle.state path)
       [%intent id=@ ~]
         =/  iid  +<.path
         ``(~(get by intents.state) iid)
@@ -87,39 +87,39 @@
       ::  the hash gate: tip5-hash the data, compare to root.
       ::  no manifest, no proofs, no RAG types.
       ::
-        %vesl-register
-      =/  lc=vesl-cause  [%vesl-register hull.u.act root.u.act]
+        %settle-register
+      =/  lc=settle-cause  [%settle-register hull.u.act root.u.act]
       =/  hash-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =((hash-leaf ;;(@ data)) expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc hash-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc hash-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
       ::
-        %vesl-verify
-      =/  lc=vesl-cause  [%vesl-verify payload.u.act]
+        %settle-verify
+      =/  lc=settle-cause  [%settle-verify payload.u.act]
       =/  hash-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =((hash-leaf ;;(@ data)) expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc hash-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc hash-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
       ::
-        %vesl-settle
-      =/  lc=vesl-cause  [%vesl-settle payload.u.act]
+        %settle-note
+      =/  lc=settle-cause  [%settle-note payload.u.act]
       =/  hash-gate=verify-gate
         |=  [note-id=@ data=* expected-root=@]
         ^-  ?
         =((hash-leaf ;;(@ data)) expected-root)
-      =/  [efx=(list vesl-effect) new-vesl=vesl-state]
-        (vesl-poke vesl.state lc hash-gate)
-      :_  state(vesl new-vesl)
+      =/  [efx=(list settle-effect) new-settle=settle-state]
+        (settle-poke settle.state lc hash-gate)
+      :_  state(settle new-settle)
       ^-  (list effect)
       efx
     ==

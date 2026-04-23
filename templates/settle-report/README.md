@@ -2,6 +2,10 @@
 
 Commit, verify, settle. With guards that actually guard.
 
+## About this template
+
+Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+
 ## Why This Exists
 
 On-chain settlement follows a pattern: commit to a result hash, submit the computation, verify the hash matches, mark it settled, never settle it again. This template implements that exact pattern with three guards that mirror what production NockApps like Vesl use:

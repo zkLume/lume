@@ -68,7 +68,7 @@ pub struct Note {
     pub state: NoteState,
 }
 
-/// Generic settlement payload — mirrors graft-payload in vesl-graft.hoon.
+/// Generic settlement payload — mirrors graft-payload in settle-graft.hoon.
 /// For RAG, `data` is the serialized manifest. For other domains, whatever
 /// the verification gate expects.
 #[derive(Debug, Clone)]

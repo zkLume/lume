@@ -1,0 +1,45 @@
+# forge-graft manifest — stateless STARK proving for single-leaf commits.
+#
+# Priority 40 is the last slot in the commitment lane (10-40).
+# `after = ["guard-graft"]` makes the declared ordering explicit
+# for readers — priority already drives injection, but the hint
+# documents intent.
+#
+# Only three active blocks: imports, cause, poke. Forge carries
+# NO state (stateless one-shot proving) and NO peek (nothing to
+# query). The composer's state + peek chains skip forge entirely
+# thanks to omitted-block handling.
+#
+# Pair forge with settle-graft for registration-check semantics — on
+# its own, forge trusts the caller's hull/note-id. The generated
+# proof is bound to `hull` and `root = hash-leaf(data)` via the
+# Fiat-Shamir transcript.
+
+[graft]
+name     = "forge-graft"
+version  = "0.1.0"
+priority = 40
+after    = ["guard-graft"]
+
+[graft.blocks.imports]
+sentinel = "*forge-graft"
+body     = """
+/+  *forge-graft
+/+  *vesl-prover
+/+  *vesl-lower
+/+  *vesl-merkle"""
+
+[graft.blocks.cause]
+sentinel = "forge-cause"
+body     = "forge-cause"
+
+[graft.blocks.poke]
+sentinel = "%forge-prove"
+body     = """
+::
+  %forge-prove
+=/  lc=forge-cause  [%forge-prove hull.u.act note-id.u.act data.u.act]
+=/  efx=(list forge-effect)  (forge-poke lc)
+:_  state
+^-  (list effect)
+efx"""

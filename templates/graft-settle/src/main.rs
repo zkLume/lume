@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fs::read("out.jam").map_err(|e| format!("Failed to read out.jam: {}", e))?;
 
     let mut app: NockApp =
-        boot::setup(&kernel, cli, &[], "{{project_name}}", None).await?;
+        boot::setup(&kernel, cli, &[], "graft-settle", None).await?;
 
     // --- step 1: submit reports (domain logic) ---
 
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let hull_id: u64 = 1;
     {
         let mut slab = NounSlab::new();
-        let tag = make_tag_in(&mut slab, "vesl-register");
+        let tag = make_tag_in(&mut slab, "settle-register");
         let root_bytes = tip5_to_atom_le_bytes(&root);
         let root_atom = make_atom_in(&mut slab, &root_bytes);
         let poke = T(&mut slab, &[tag, D(hull_id), root_atom]);
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // --- step 5: settle a report ---
     //
-    // Build a graft-payload noun, jam it, and poke %vesl-settle.
+    // Build a graft-payload noun, jam it, and poke %settle-note.
     // The kernel's Graft verifies via the hash gate, then transitions
     // the note to %settled. Replay protection prevents double-settlement.
     //
@@ -99,7 +99,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let settle_hull: u64 = 2;
     {
         let mut slab = NounSlab::new();
-        let tag = make_tag_in(&mut slab, "vesl-register");
+        let tag = make_tag_in(&mut slab, "settle-register");
         let rb = tip5_to_atom_le_bytes(&single_root);
         let root_atom = make_atom_in(&mut slab, &rb);
         let poke = T(&mut slab, &[tag, D(settle_hull), root_atom]);
@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         app.poke(SystemWire.to_wire(), slab).await?;
     }
 
-    // Build and send %vesl-settle
+    // Build and send %settle-note
     //
     // graft-payload: [note=[id=@ hull=@ root=@ state=[%pending ~]] data=* expected-root=@]
     {
@@ -130,15 +130,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             jam_to_bytes(&mut stack, payload_noun)
         };
         let jammed = make_atom_in(&mut slab, &payload_bytes);
-        let tag = make_tag_in(&mut slab, "vesl-settle");
+        let tag = make_tag_in(&mut slab, "settle-note");
         let poke = T(&mut slab, &[tag, jammed]);
         slab.set_root(poke);
 
         let effects = app.poke(SystemWire.to_wire(), slab).await?;
-        print_effects(&effects, "vesl-settle");
+        print_effects(&effects, "settle-note");
     }
 
-    // Replay protection: same note ID should produce %vesl-error
+    // Replay protection: same note ID should produce %settle-error
     {
         let mut slab = NounSlab::new();
         let rb = tip5_to_atom_le_bytes(&single_root);
@@ -157,7 +157,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             jam_to_bytes(&mut stack, payload_noun)
         };
         let jammed = make_atom_in(&mut slab, &payload_bytes);
-        let tag = make_tag_in(&mut slab, "vesl-settle");
+        let tag = make_tag_in(&mut slab, "settle-note");
         let poke = T(&mut slab, &[tag, jammed]);
         slab.set_root(poke);
 

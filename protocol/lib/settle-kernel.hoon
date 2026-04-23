@@ -102,6 +102,11 @@
       ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
         ~>  %slog.[3 'settle: root mismatch']
         [~ state]
+      ::  Guard: note header root must match expected root (H-07)
+      ::
+      ?.  =(root.note.args expected-root.args)
+        ~>  %slog.[3 'settle: note root does not match expected root']
+        [~ state]
       ::  Guard: reject duplicate note IDs (replay protection)
       ::
       ?:  (~(has in settled.state) id.note.args)
@@ -125,6 +130,12 @@
       ::  Guard: expected root must match registered root
       ::
       ?.  =(expected-root.args (~(got by registered.state) hull.note.args))
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
+      ::  Guard: note header root must match expected root (H-07)
+      ::
+      ?.  =(root.note.args expected-root.args)
         :_  state
         ^-  (list effect)
         ~[[%verified %.n]]
