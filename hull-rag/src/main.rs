@@ -318,8 +318,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("WARNING: --seed-phrase is visible in `ps` output. Use --seed-phrase-file instead.");
     }
 
-    // --- Resolve settlement config ---
-    let settlement = config::resolve_with_demo_key(
+    // --- Resolve settlement config (L-14: surface errors, don't panic) ---
+    let settlement = config::resolve_with_demo_key_checked(
         cli.settlement_mode,
         cli.chain_endpoint.clone(),
         cli.submit,
@@ -328,7 +328,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli.accept_timeout,
         seed_phrase,
         &toml_cfg,
-    );
+    )
+    .map_err(|e| {
+        eprintln!("ERROR: settlement config: {e}");
+        e
+    })?;
 
     println!("=== Vesl Hull Orchestrator (NockApp) ===\n");
     println!("    Settlement: {settlement}");
@@ -358,8 +362,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- HTTP server mode ---
     if cli.serve {
-        // C-004: require auth config before starting
-        api::check_auth_config(cli.no_auth).map_err(|e| {
+        // C-004 / M-15: require auth config, and refuse --no-auth when
+        // the bind address isn't loopback.
+        api::check_auth_config_with_bind(cli.no_auth, &cli.bind_addr).map_err(|e| {
             eprintln!("ERROR: {e}");
             e
         })?;

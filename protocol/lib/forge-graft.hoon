@@ -68,10 +68,17 @@
     =/  root=@  (hash-leaf data.cause)
     =/  belts=(list @)  (split-to-belts data.cause)
     =/  p=@  (add (sub (bex 64) (bex 32)) 1)
+    ::  AUDIT 2026-04-19 C-lead-3: polynomial (Horner) fold so permutations
+    ::  of `belts` produce distinct subjects. base = 2^56 is strictly
+    ::  greater than max belt value (7 bytes = 56 bits), keeping the fold
+    ::  injective on reorderings. `b` is the accumulator, `a` is the
+    ::  current belt element (per `roll`'s gate convention).
+    ::
+    =/  base=@  (bex 56)
     =/  subject=@
       %+  roll  belts
       |=  [a=@ b=@]
-      (mod (add a b) p)
+      (mod (add (mul b base) a) p)
     =/  formula=*
       =/  f=*  [0 1]
       =|  i=@

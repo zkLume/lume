@@ -158,6 +158,7 @@ fn build_graft_single_leaf_payload_in(
 mod tests {
     use super::*;
     use crate::Mint;
+    use nock_noun_rs::slab_root;
 
     fn fixture_root() -> Tip5Hash {
         let data: [&[u8]; 1] = [b"hello world"];
@@ -169,7 +170,7 @@ mod tests {
     fn build_settle_register_poke_emits_nonempty_jam() {
         let slab = build_settle_register_poke(1, &fixture_root());
         let mut stack = new_stack();
-        let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
+        let bytes = jam_to_bytes(&mut stack, slab_root(&slab));
         assert!(!bytes.is_empty());
     }
 
@@ -178,7 +179,7 @@ mod tests {
         let root = fixture_root();
         let slab = build_settle_note_poke(101, 1, &root, b"hello world");
         let mut stack = new_stack();
-        let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
+        let bytes = jam_to_bytes(&mut stack, slab_root(&slab));
         assert!(!bytes.is_empty());
     }
 
@@ -187,7 +188,7 @@ mod tests {
         let root = fixture_root();
         let slab = build_settle_verify_poke(101, 1, &root, b"hello world");
         let mut stack = new_stack();
-        let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
+        let bytes = jam_to_bytes(&mut stack, slab_root(&slab));
         assert!(!bytes.is_empty());
     }
 
@@ -226,14 +227,14 @@ mod tests {
         let root = fixture_root();
         let a = build_vesl_register_poke(1, &root);
         let b = build_settle_register_poke(1, &root);
-        let ab = jam_to_bytes(&mut new_stack(), unsafe { *a.root() });
-        let bb = jam_to_bytes(&mut new_stack(), unsafe { *b.root() });
+        let ab = jam_to_bytes(&mut new_stack(), slab_root(&a));
+        let bb = jam_to_bytes(&mut new_stack(), slab_root(&b));
         assert_eq!(ab, bb);
 
         let c = build_vesl_settle_poke(7, 3, &root, b"x");
         let d = build_settle_note_poke(7, 3, &root, b"x");
-        let cb = jam_to_bytes(&mut new_stack(), unsafe { *c.root() });
-        let db = jam_to_bytes(&mut new_stack(), unsafe { *d.root() });
+        let cb = jam_to_bytes(&mut new_stack(), slab_root(&c));
+        let db = jam_to_bytes(&mut new_stack(), slab_root(&d));
         assert_eq!(cb, db);
     }
 }

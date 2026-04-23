@@ -12,7 +12,7 @@ pub use nockchain_tip5_rs::{
 // Chain/wallet clients (for Settle/Forge users)
 pub use nockchain_client_rs::{ChainClient, ChainConfig, WalletClient, WalletConfig};
 
-// Noun building (for IntentVerifier trait)
+// Noun building (for CommitmentVerifier trait)
 pub use nock_noun_rs::NounSlab;
 
 // Vesl domain types — mirrors of sur/vesl.hoon
@@ -95,16 +95,28 @@ pub struct ForgePayload {
     pub expected_root: Tip5Hash,
 }
 
-/// Domain verification trait. Implement for your computation type.
+/// Commitment verification trait. Implement for your computation type.
 /// `RagVerifier` is the built-in implementation for RAG manifests.
 ///
-/// AUDIT 2026-04-17 H-03: `verify` takes `note_id` so domain
-/// verifiers can enforce `note_id == deterministic_fn(data)`, closing
-/// the pre-commit race where an attacker predicts a victim's note-id
-/// and settles a different manifest under it first. Implementations
-/// that don't care about note-id binding can simply ignore the
-/// argument.
-pub trait IntentVerifier: Send + Sync {
+/// Decides whether `data` binds to `expected_root` under a domain-specific
+/// rule (for RAG: manifest chunks prove into the merkle root; for other
+/// domains: whatever the commitment gate demands). This is commitment-layer
+/// plumbing — it has nothing to do with intent coordination despite the
+/// legacy `IntentVerifier` name retained as a deprecated alias below.
+///
+/// AUDIT 2026-04-17 H-03: `verify` takes `note_id` so domain verifiers
+/// can enforce `note_id == deterministic_fn(data)`, closing the
+/// pre-commit race where an attacker predicts a victim's note-id and
+/// settles a different manifest under it first. Implementations that
+/// don't care about note-id binding can simply ignore the argument.
+pub trait CommitmentVerifier: Send + Sync {
     fn verify(&self, note_id: u64, data: &[u8], expected_root: &Tip5Hash) -> bool;
     fn build_settle_poke(&self, payload: &GraftPayload) -> anyhow::Result<NounSlab>;
 }
+
+/// Deprecated alias for `CommitmentVerifier`. The original name conflated
+/// intent coordination with commitment verification — see
+/// `.dev/BIFURCATE_INTENT.md` and `.dev/GRAFT_REFACTOR.md` for the taxonomy
+/// cleanup. Will be removed in the next minor release.
+#[deprecated(note = "renamed to CommitmentVerifier; IntentVerifier will be removed in the next minor release")]
+pub use self::CommitmentVerifier as IntentVerifier;

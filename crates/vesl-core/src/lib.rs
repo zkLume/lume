@@ -33,9 +33,12 @@ pub use types::{
     Tip5Hash, ProofNode, TIP5_ZERO, MerkleTree,
     ChainClient, ChainConfig, WalletClient, WalletConfig,
     format_tip5, hash_leaf, hash_pair, tip5_to_atom_le_bytes, verify_proof,
-    GraftPayload, IntentVerifier, NounSlab,
+    CommitmentVerifier, GraftPayload, NounSlab,
     ForgePayload, LeafWithProof,
 };
+// Deprecated alias — remove in next minor release. Callers should migrate to CommitmentVerifier.
+#[allow(deprecated)]
+pub use types::IntentVerifier;
 pub use guard::GuardError;
 pub use mint::MintError;
 pub use settle::RagVerifier;

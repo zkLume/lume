@@ -32,13 +32,13 @@ pub fn build_forge_prove_poke(hull: u64, note_id: u64, data: &[u8]) -> NounSlab 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nock_noun_rs::{jam_to_bytes, new_stack};
+    use nock_noun_rs::{jam_to_bytes, new_stack, slab_root};
 
     #[test]
     fn build_forge_prove_poke_emits_nonempty_jam() {
         let slab = build_forge_prove_poke(1, 101, b"hello world");
         let mut stack = new_stack();
-        let bytes = jam_to_bytes(&mut stack, unsafe { *slab.root() });
+        let bytes = jam_to_bytes(&mut stack, slab_root(&slab));
         assert!(!bytes.is_empty());
     }
 

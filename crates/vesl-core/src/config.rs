@@ -104,11 +104,10 @@ impl SettlementConfig {
 
     /// Resolve config from CLI args, toml, and mode defaults.
     ///
-    /// Resolution order: CLI > env > toml > mode defaults.
-    /// Backward compat: `--chain-endpoint` without `--settlement-mode` infers fakenet.
-    ///
-    /// `default_signing_key`: the signing key to use for fakenet mode. Typically
-    /// the demo signing key, but callers can provide any key.
+    /// Preserved for tests and legacy callers. Internally calls
+    /// `resolve_checked` and panics on misconfiguration. Production
+    /// code should prefer `resolve_checked` so it can surface
+    /// operator-actionable errors via `main.rs`.
     pub fn resolve(
         cli_mode: Option<SettlementMode>,
         cli_chain_endpoint: Option<String>,
@@ -120,6 +119,42 @@ impl SettlementConfig {
         toml: &SettlementToml,
         default_signing_key: Option<[Belt; 8]>,
     ) -> Self {
+        Self::resolve_checked(
+            cli_mode,
+            cli_chain_endpoint,
+            cli_submit,
+            cli_tx_fee,
+            cli_coinbase_timelock_min,
+            cli_accept_timeout,
+            cli_seed_phrase,
+            toml,
+            default_signing_key,
+        )
+        .unwrap_or_else(|e| panic!("SettlementConfig::resolve: {e}"))
+    }
+
+    /// Resolve config from CLI args, toml, and mode defaults.
+    ///
+    /// Resolution order: CLI > env > toml > mode defaults.
+    /// Backward compat: `--chain-endpoint` without `--settlement-mode` infers fakenet.
+    ///
+    /// `default_signing_key`: the signing key to use for fakenet mode. Typically
+    /// the demo signing key, but callers can provide any key.
+    ///
+    /// AUDIT 2026-04-19 L-14: returns `Result` instead of `.expect`-ing
+    /// on misconfiguration, so main.rs can print an operator-actionable
+    /// error and exit cleanly instead of printing a Rust panic trace.
+    pub fn resolve_checked(
+        cli_mode: Option<SettlementMode>,
+        cli_chain_endpoint: Option<String>,
+        cli_submit: bool,
+        cli_tx_fee: Option<u64>,
+        cli_coinbase_timelock_min: Option<u64>,
+        cli_accept_timeout: Option<u64>,
+        cli_seed_phrase: Option<String>,
+        toml: &SettlementToml,
+        default_signing_key: Option<[Belt; 8]>,
+    ) -> Result<Self, String> {
         // 1. Determine mode: CLI > toml > infer from flags > local
         let mode = cli_mode
             .or_else(|| {
@@ -137,9 +172,9 @@ impl SettlementConfig {
             });
 
         match mode {
-            SettlementMode::Local => Self::local(),
+            SettlementMode::Local => Ok(Self::local()),
 
-            SettlementMode::Fakenet => Self {
+            SettlementMode::Fakenet => Ok(Self {
                 mode: SettlementMode::Fakenet,
                 chain_endpoint: Some(
                     cli_chain_endpoint
@@ -155,22 +190,29 @@ impl SettlementConfig {
                 accept_timeout_secs: cli_accept_timeout
                     .or(toml.accept_timeout_secs)
                     .unwrap_or(300),
-            },
+            }),
 
             SettlementMode::Dumbnet => {
                 let endpoint = cli_chain_endpoint
                     .or_else(|| toml.chain_endpoint.clone())
-                    .expect(
-                        "dumbnet mode requires --chain-endpoint or chain_endpoint in config",
-                    );
+                    .ok_or_else(|| {
+                        "dumbnet mode requires --chain-endpoint or \
+                         chain_endpoint in config"
+                            .to_string()
+                    })?;
 
                 // Resolve signing key: CLI seed phrase > env var > None
                 let seed = cli_seed_phrase
                     .or_else(|| std::env::var("VESL_SEED_PHRASE").ok());
-                let sk = seed.map(|s| signing::key_from_seed_phrase(&s)
-                    .expect("invalid seed phrase — produced zero scalar"));
+                let sk = match seed {
+                    None => None,
+                    Some(s) => Some(
+                        signing::key_from_seed_phrase(&s)
+                            .map_err(|e| format!("invalid seed phrase: {e:?}"))?,
+                    ),
+                };
 
-                Self {
+                Ok(Self {
                     mode: SettlementMode::Dumbnet,
                     chain_endpoint: Some(endpoint),
                     signing_key: sk,
@@ -182,7 +224,7 @@ impl SettlementConfig {
                     accept_timeout_secs: cli_accept_timeout
                         .or(toml.accept_timeout_secs)
                         .unwrap_or(900),
-                }
+                })
             }
         }
     }

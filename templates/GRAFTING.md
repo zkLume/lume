@@ -276,7 +276,7 @@ The Graft is domain-agnostic. The examples above use a RAG verification gate (ca
 =/  mani  ;;(manifest data)
 (verify-manifest mani expected-root)
 
-::  Simple hash comparison (graft-intent)
+::  Simple hash comparison (graft-hash-gate)
 |=  [note-id=@ data=* expected-root=@]
 =((hash-leaf ;;(@ data)) expected-root)
 
@@ -322,16 +322,18 @@ The Graft is domain-agnostic. The examples above use a RAG verification gate (ca
 
 `data` is whatever your gate expects. JAM the whole payload, pass it as the `payload` field in `%settle-note` or `%settle-verify`.
 
-### The graft-intent Template
+### The graft-hash-gate Template
 
-[`graft-intent`](./graft-intent/) is a working example of a non-RAG gate. No `sur/vesl.hoon`, no `rag-logic.hoon`. The gate is one line: hash the data, compare to root. Read it to see the pattern stripped to the minimum.
+[`graft-hash-gate`](./graft-hash-gate/) is a working example of a non-RAG gate. No `sur/vesl.hoon`, no `rag-logic.hoon`. The gate is one line: hash the data, compare to root. Read it to see the pattern stripped to the minimum.
+
+(This template was formerly called `graft-intent`; the name was misleading. The real intent-family primitive lives at `protocol/lib/intent-graft.hoon` — still a placeholder pending canonical upstream.)
 
 ## Reference Templates
 
 - [`graft-scaffold`](./graft-scaffold/) — **Start here.** Full lifecycle with bundled deps and CUSTOMIZE markers
 - [`graft-mint`](./graft-mint/) — Mint + Guard with RAG verification gate
 - [`graft-settle`](./graft-settle/) — Full settlement lifecycle with settlement poke
-- [`graft-intent`](./graft-intent/) — Custom hash gate, no RAG types
+- [`graft-hash-gate`](./graft-hash-gate/) — Custom hash gate, no RAG types
 
 ## Operator Notes
 

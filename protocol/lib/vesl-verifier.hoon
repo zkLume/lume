@@ -38,6 +38,12 @@
 ::
 ++  verify
   |=  [=proof override=(unit (list term)) eny=@ s=* f=*]
+  ::  AUDIT 2026-04-19 C-lead-4: pin version.proof = %2 at the public
+  ::  entry as well — belt-and-suspenders with the deeper pin inside
+  ::  vesl-stark-verifier so callers get a typed crash here rather than
+  ::  an internal sieve crash.
+  ::
+  ?>  ?=(%2 version.proof)
   (verify:verifier proof override eny s f)
 ::
 ::  +verify-structure: structural + re-execution validation

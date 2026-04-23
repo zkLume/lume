@@ -90,8 +90,19 @@
       ::    Guards: root registered, root match, no replay
       ::
         %settle
-      =/  raw=*  (cue payload.u.act)
-      =/  args=forge-payload  ;;(forge-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve so malformed
+      ::  payload yields a typed error instead of panicking.
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(forge-payload raw)
+      ?:  ?=(%| -.parsed)
+        ~>  %slog.[3 'forge: malformed settle payload']
+        :_  state
+        ^-  (list effect)
+        ~[[%settle-error 'forge: malformed payload']]
+      =/  args=forge-payload  p.parsed
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)
@@ -130,8 +141,18 @@
       ::  %verify — verify leaves (read-only, no state change)
       ::
         %verify
-      =/  raw=*  (cue payload.u.act)
-      =/  args=forge-payload  ;;(forge-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve for read-only
+      ::  soft preflight.
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(forge-payload raw)
+      ?:  ?=(%| -.parsed)
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
+      =/  args=forge-payload  p.parsed
       ?.  (~(has by registered.state) hull.note.args)
         :_  state
         ^-  (list effect)
@@ -161,8 +182,18 @@
       ::    If proving crashes, nothing settles.
       ::
         %prove
-      =/  raw=*  (cue payload.u.act)
-      =/  args=forge-payload  ;;(forge-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve (see %settle).
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(forge-payload raw)
+      ?:  ?=(%| -.parsed)
+        ~>  %slog.[3 'forge: malformed prove payload']
+        :_  state
+        ^-  (list effect)
+        ~[[%prove-error 'forge: malformed payload']]
+      =/  args=forge-payload  p.parsed
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)
@@ -203,10 +234,16 @@
       ::  p = 2^64 - 2^32 + 1
       ::
       =/  p=@  (add (sub (bex 64) (bex 32)) 1)
+      ::  AUDIT 2026-04-19 C-lead-3: Horner polynomial fold so the STARK
+      ::  subject is permutation-sensitive. base = 2^56 exceeds any 7-byte
+      ::  belt, giving an injective fold. `b` is accumulator, `a` is the
+      ::  current belt (per `roll`'s gate convention).
+      ::
+      =/  base=@  (bex 56)
       =/  belt-digest=@
         %+  roll  all-belts
         |=  [a=@ b=@]
-        (mod (add a b) p)
+        (mod (add (mul b base) a) p)
       ::  64 nested increments on [0 1]
       ::  known-working pattern: atom subject + Nock 0/4 only
       ::

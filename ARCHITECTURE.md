@@ -93,6 +93,10 @@ assets/vesl.jam                  Compiled Hoon kernel (~18MB)
 scripts/                         Fakenet harness and environment config
 ```
 
+## The graft catalog
+
+Vesl's composition layer — the `graft-inject` pattern — groups grafts into five families, arranged on a priority lattice. Family 1 (commitment) owns the 10–40 band and is what ships today: `settle-graft`, `mint-graft`, `guard-graft`, `forge-graft` — the STARK-bearing primitives that commit data to hull-keyed roots. Family 2 (verification gates) is a library, not a graft; its arms are parameters consumed by family-1 grafts. Families 3 (state, 50–99) and 4 (behavior, 100–149) are planned buildouts covering app-state primitives and runtime wrappers. Family 5 (intent, 200–299) is a placeholder — `intent-graft.hoon` reserves the shape but crashes on invocation until the Nockchain monorepo publishes a canonical intent structure to swap in. Commitments don't require intents: a NockApp can produce a STARK proof and settle it without ever declaring one. See [`docs/graft-manifest.md`](docs/graft-manifest.md) for the authoritative lattice, band rationale, and manifest schema.
+
 ## Hash Function: tip5
 
 Vesl uses tip5, the same algebraic hash used in Nockchain's block validation. tip5 operates over the Goldilocks field (p = 2^64 - 2^32 + 1) and costs ~300 R1CS constraints per hash — 100x cheaper than SHA-256 in STARK circuits.

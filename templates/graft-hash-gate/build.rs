@@ -4,7 +4,8 @@ use std::{env, fs};
 
 fn main() {
     println!("cargo:rerun-if-changed=hoon/app/app.hoon");
-    println!("cargo:rerun-if-changed=hoon/lib/intent-graft.hoon");
+    println!("cargo:rerun-if-changed=hoon/lib/settle-graft.hoon");
+    println!("cargo:rerun-if-changed=hoon/lib/vesl-merkle.hoon");
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let hoon_app_file = "hoon/app/app.hoon";
@@ -41,7 +42,5 @@ fn main() {
                 );
             }
         }
-
-        let _ = fs::copy(format!("{}/app.nock", out_dir), "out.jam");
     }
 }

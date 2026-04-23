@@ -83,8 +83,19 @@
       ::    Returns [%verified ok=?] — no state change
       ::
         %verify
-      =/  raw=*  (cue payload.u.act)
-      =/  args=settlement-payload  ;;(settlement-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve. %verify is
+      ::  read-only; crashing on malformed payload contradicts the
+      ::  soft-preflight contract.
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(settlement-payload raw)
+      ?:  ?=(%| -.parsed)
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
+      =/  args=settlement-payload  p.parsed
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)

@@ -91,7 +91,15 @@
 ++  verify-chunk
   |=  [chunk=@ proof=(list [hash=@ side=?]) expected-root=@]
   ^-  ?
-  ?:  (gth (lent proof) 64)  %.n
+  ::  AUDIT 2026-04-19 M-13: slog on depth-cap overflow so operators
+  ::  can distinguish "proof too deep" from "proof hashes mismatch."
+  ::  Kept as soft %.n (not a crash) to preserve the loobean contract
+  ::  callers depend on in %verify arms. 64 supports 2^64 leaves, so
+  ::  a legitimate caller will never trip this.
+  ::
+  ?:  (gth (lent proof) 64)
+    ~>  %slog.[3 'vesl-merkle: proof exceeds 64-node cap']
+    %.n
   =/  cur=@  (hash-leaf chunk)
   |-
   ?~  proof

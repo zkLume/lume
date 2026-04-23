@@ -148,11 +148,15 @@ pub struct AppState {
 }
 
 /// Summary of a settled note, kept in a ring buffer for /status.
+///
+/// AUDIT 2026-04-19 M-18: `query_preview` removed. Any authenticated
+/// caller (and anyone, under `--no-auth` deployments) could enumerate
+/// recent user queries via `/status`. The ring still exposes note-id
+/// and root — useful for settlement inspection, non-sensitive.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoteSummary {
     pub note_id: u64,
     pub root: String,
-    pub query_preview: String,
     pub settled: bool,
 }
 
@@ -375,8 +379,29 @@ async fn check_api_key(
 
 /// Pre-flight auth check (C-004). Call before starting the server.
 /// Returns an error message if auth is misconfigured.
+///
+/// Loopback-only entry point. Production callers should use
+/// `check_auth_config_with_bind` so the M-15 non-loopback refusal runs.
 pub fn check_auth_config(no_auth: bool) -> Result<(), String> {
+    check_auth_config_with_bind(no_auth, "127.0.0.1")
+}
+
+/// Variant used by the CLI entry point — knows the bind address, so
+/// it can reject `--no-auth` on non-loopback binds.
+///
+/// AUDIT 2026-04-19 M-15: `--no-auth` on an exposed bind leaks recent
+/// notes via `/status` and lets anyone on the network poke the kernel.
+/// Fail-closed when `no_auth` is set AND `bind_addr` isn't loopback;
+/// operators that want external exposure must provide VESL_API_KEY.
+pub fn check_auth_config_with_bind(no_auth: bool, bind_addr: &str) -> Result<(), String> {
     if no_auth {
+        if !is_loopback_bind(bind_addr) {
+            return Err(format!(
+                "--no-auth on bind address `{bind_addr}` is refused. \
+                 --no-auth is only permitted on loopback binds (127.0.0.1, ::1, localhost). \
+                 Set VESL_API_KEY and drop --no-auth, or change bind-addr to loopback."
+            ));
+        }
         NO_AUTH.store(true, Ordering::Relaxed);
         return Ok(());
     }
@@ -388,6 +413,13 @@ pub fn check_auth_config(no_auth: bool) -> Result<(), String> {
                 .into(),
         ),
     }
+}
+
+fn is_loopback_bind(bind_addr: &str) -> bool {
+    let host = bind_addr.rsplit_once(':').map(|(h, _)| h).unwrap_or(bind_addr);
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    matches!(host, "127.0.0.1" | "::1" | "localhost")
+        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -795,16 +827,11 @@ async fn query_handler(
         }
     }
 
-    // Record in recent notes ring buffer
-    let query_preview = if req.query.len() > 60 {
-        format!("{}...", char_safe_prefix(&req.query, 60))
-    } else {
-        req.query.clone()
-    };
+    // Record in recent notes ring buffer. AUDIT 2026-04-19 M-18:
+    // query text omitted — see NoteSummary doc-comment.
     st.recent_notes.push_back(NoteSummary {
         note_id,
         root: root_hex.clone(),
-        query_preview,
         settled: true,
     });
     if st.recent_notes.len() > MAX_RECENT_NOTES {
@@ -855,11 +882,22 @@ fn render_noun_debug(noun: nockapp::Noun, depth: usize) -> String {
     } else if let Ok(cell) = noun.as_cell() {
         let head: Noun = cell.head();
         let tail: Noun = cell.tail();
-        // Check for tape (list of small atoms)
+        // Check for tape (list of small atoms).
+        //
+        // AUDIT 2026-04-19 L-12: cap the tape walk at 1024 chars. A
+        // crafted noun with 10M single-character cells would otherwise
+        // allocate 10 MB of String before we noticed. Depth-cap at 8
+        // already saves the recursion stack; this saves the heap.
+        const TAPE_CAP: usize = 1024;
         let mut chars = Vec::new();
         let mut walk: Noun = noun;
         let mut is_tape = true;
+        let mut truncated = false;
         while let Ok(c) = walk.as_cell() {
+            if chars.len() >= TAPE_CAP {
+                truncated = true;
+                break;
+            }
             let h: Noun = c.head();
             if let Ok(ha) = h.as_atom() {
                 if let Ok(v) = ha.as_u64() {
@@ -868,8 +906,12 @@ fn render_noun_debug(noun: nockapp::Noun, depth: usize) -> String {
             } else { is_tape = false; break; }
             walk = c.tail();
         }
-        if is_tape && !chars.is_empty() && walk.is_atom() {
-            return format!("\"{}\"", chars.iter().collect::<String>());
+        if is_tape && !chars.is_empty() && (walk.is_atom() || truncated) {
+            let s: String = chars.iter().collect();
+            if truncated {
+                return format!("\"{}...\"", s);
+            }
+            return format!("\"{}\"", s);
         }
         let h = render_noun_debug(head, depth + 1);
         let t = render_noun_debug(tail, depth + 1);
@@ -1091,6 +1133,18 @@ async fn prove_handler(
         if is_prove_failed {
             // Extract trace from [%prove-failed trace-jam]
             // trace-jam is a jammed noun containing the mule crash trace
+            //
+            // AUDIT 2026-04-19 M-14: cap trace size before cue_into.
+            // The kernel's trace is nominally bounded, but if it ever
+            // forwarded user data (e.g. via ~| on user input) this
+            // would be attacker-controlled CUE input. Large / deeply
+            // nested atoms would OOM the handler. 256 KB is generous
+            // for a legitimate trace and modest for a DoS.
+            //
+            // AUDIT 2026-04-19 M-17: trace dump moved from world-
+            // writable `/tmp/prove_trace.bin` into an output-dir
+            // tempfile, dropping the symlink-attack surface.
+            const MAX_TRACE_BYTES: usize = 256 * 1024;
             let tail_info = root_noun.as_cell().ok().map(|cell| {
                 let tail = cell.tail();
                 // The tail is (jam (list tank)) — CUE and walk the noun tree
@@ -1098,7 +1152,24 @@ async fn prove_handler(
                     let a = tail.as_atom().unwrap();
                     let bytes = a.as_ne_bytes();
                     let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
-                    let _ = std::fs::write("/tmp/prove_trace.bin", &bytes[..len]);
+                    if len > MAX_TRACE_BYTES {
+                        eprintln!(
+                            "[prove] trace atom oversize ({} bytes, cap {}); skipping cue",
+                            len, MAX_TRACE_BYTES,
+                        );
+                        return "".to_string();
+                    }
+                    let tmp_path = st.output_dir.join(format!(
+                        ".prove_trace.bin.{}.tmp",
+                        std::process::id(),
+                    ));
+                    let target = st.output_dir.join("prove_trace.bin");
+                    let write_result = std::fs::write(&tmp_path, &bytes[..len])
+                        .and_then(|_| std::fs::rename(&tmp_path, &target));
+                    if let Err(e) = write_result {
+                        eprintln!("[prove] trace dump write failed: {e}");
+                        let _ = std::fs::remove_file(&tmp_path);
+                    }
                     eprintln!("[prove] trace atom: {} bytes", len);
                     // CUE the jammed trace
                     let mut cue_slab: NounSlab = NounSlab::new();
@@ -1303,17 +1374,12 @@ async fn prove_handler(
         }
     }
 
-    // Record in recent notes ring buffer
+    // Record in recent notes ring buffer. AUDIT 2026-04-19 M-18:
+    // query text omitted — see NoteSummary doc-comment.
     if settled {
-        let query_preview = if req.query.len() > 60 {
-            format!("{}...", char_safe_prefix(&req.query, 60))
-        } else {
-            req.query.clone()
-        };
         st.recent_notes.push_back(NoteSummary {
             note_id,
             root: root_hex.clone(),
-            query_preview,
             settled: true,
         });
         if st.recent_notes.len() > MAX_RECENT_NOTES {
@@ -1405,7 +1471,7 @@ async fn diag_sig_hash_handler(
         match tx_builder::kernel_diag_sieve(&mut st.app, &seeds).await {
             Ok(effects) => {
                 if let Some(effect) = effects.first() {
-                    let root = unsafe { *effect.root() };
+                    let root = slab_root(effect);
                     // Effect is [%diag-sieve result ...]. Check if result is %ok.
                     if let Ok(cell) = root.as_cell() {
                         if let Ok(inner) = cell.tail().as_cell() {
@@ -1442,7 +1508,7 @@ async fn diag_sig_hash_handler(
     let diag_hash_result = match tx_builder::kernel_diag_hash(&mut st.app, &seeds, &fee).await {
         Ok(effects) => {
             if let Some(effect) = effects.first() {
-                let root = unsafe { *effect.root() };
+                let root = slab_root(effect);
                 if let Ok(cell) = root.as_cell() {
                     if let Ok(inner) = cell.tail().as_cell() {
                         let tag = inner.head();

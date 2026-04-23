@@ -100,8 +100,20 @@
       ::    Guards: root must be registered, note ID must not be settled
       ::
         %settle
-      =/  raw=*  (cue payload.u.act)
-      =/  args=settlement-payload  ;;(settlement-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve. A malformed
+      ::  payload atom or a cell that fails the strict-mold otherwise
+      ::  panics the kernel on every attacker poke.
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(settlement-payload raw)
+      ?:  ?=(%| -.parsed)
+        ~>  %slog.[3 'vesl: malformed settle payload']
+        :_  state
+        ^-  (list effect)
+        ~[[%settle-error 'vesl: malformed payload']]
+      =/  args=settlement-payload  p.parsed
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)
@@ -134,8 +146,18 @@
       ::    settlement without proof.
       ::
         %prove
-      =/  raw=*  (cue payload.u.act)
-      =/  args=settlement-payload  ;;(settlement-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve (see %settle).
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(settlement-payload raw)
+      ?:  ?=(%| -.parsed)
+        ~>  %slog.[3 'vesl: malformed prove payload']
+        :_  state
+        ^-  (list effect)
+        ~[[%prove-error 'vesl: malformed payload']]
+      =/  args=settlement-payload  p.parsed
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)
@@ -189,10 +211,17 @@
       ::  p = 2^64 - 2^32 + 1 (Goldilocks prime)
       ::
       =/  p=@  (add (sub (bex 64) (bex 32)) 1)
+      ::  AUDIT 2026-04-19 C-lead-3: Horner polynomial fold. Plain sum
+      ::  mod p is commutative, so the STARK subject would not
+      ::  distinguish belt permutations. base = 2^56 > max belt (7 bytes)
+      ::  keeps the fold order-sensitive. `b` is accumulator; `a` is the
+      ::  current belt (per `roll`'s gate convention).
+      ::
+      =/  base=@  (bex 56)
       =/  belt-digest=@
         %+  roll  all-belts
         |=  [a=@ b=@]
-        (mod (add a b) p)
+        (mod (add (mul b base) a) p)
       ::  64 nested increments on [0 1]
       ::  known-working pattern: atom subject + Nock 0/4 only
       ::

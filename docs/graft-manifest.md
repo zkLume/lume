@@ -42,24 +42,61 @@ protocol/lib/
 Flat — no per-graft directory. The manifest's `name` field, not its
 filename, is the canonical identifier the loader uses.
 
+**Symlink requirement.** `hoonc` resolves `/+ *foo` against the library
+root passed on its command line — in vesl, that's `hoon/`, which holds
+symlinks pointing at `protocol/lib/`. Dropping a new `.hoon` under
+`protocol/lib/` is not enough; add a matching symlink with
+`ln -s ../../protocol/lib/<name>.hoon hoon/lib/<name>.hoon` before the
+first compile. If the symlink is missing, hoonc exits 2, emits
+`[DIAG soft] DETERMINISTIC error mote=Exit`, and writes no `out.jam` —
+the trace blames hoonc internals rather than the new file, so check the
+symlink tree first. Downstream (`vesl-nockup`) skips this by copying
+both files into `hoon/lib/` via `sync.sh`; the symlink dance only
+matters inside the vesl repo.
+
 ## `[graft]` — top-level metadata
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `name` | string | yes | Canonical name. Matches the `--grafts <CSV>` argument. Must be unique across all manifests under the discovery root. |
 | `version` | string | yes | Semver. Bumped when blocks change in a backwards-incompatible way. |
-| `priority` | int | yes | Injection order. Lower = injected earlier. Lattice: 10–40 for commitment primitives, 50–99 for state-pattern grafts, 100+ for user/domain grafts. |
+| `priority` | int | yes | Injection order. Lower = injected earlier. See **The 5-family lattice** below for the band assignments. |
+| `stability` | string | no | One of `stable`, `beta`, `placeholder`. Defaults to `stable` if omitted. `placeholder` marks a reserved family slot whose body crashes on invocation (see `intent-graft.hoon`) — consumers building on it are explicitly building against an unfinished primitive. `beta` is for grafts that compile and run but whose interface may change. |
 | `after` | string list | no | Soft ordering hints. Each entry names another graft that must inject earlier. Error at load time if an entry names a graft not present in the discovered set. Resolved after `priority` ties. |
 
 Example:
 
 ```toml
 [graft]
-name     = "settle-graft"
-version  = "0.1.0"
-priority = 10
-after    = []
+name      = "settle-graft"
+version   = "0.1.0"
+priority  = 10
+stability = "stable"
+after     = []
 ```
+
+## The 5-family lattice
+
+Grafts fall into five families. The priority number both orders injection and labels the family a graft belongs to — reviewers reading a manifest can tell at a glance which part of the catalog a graft lives in.
+
+| # | Family | Role | Priority band | Status | Example grafts |
+|---|---|---|---|---|---|
+| 1 | Commitment | STARK-bearing primitives that commit data to hull-keyed roots | 10–40 | Shipped | `settle-graft` (10), `mint-graft` (20), `guard-graft` (30), `forge-graft` (40) |
+| 2 | Verification gates | Parameterized decision functions consumed by commitment grafts. Delivered as a library, not a priority-claimed graft | n/a (library) | Scaffolded | `vesl-gates.hoon` (planned — see `.dev/01_GATE_CATALOG.md`) |
+| 3 | State | Domain-keyed app-state primitives (kv, counter, queue, rbac, registry) | 50–99 | Planned | per `.dev/02_STATE_GRAFTS.md` |
+| 4 | Behavior | Runtime wrappers that enforce or observe rules around other grafts | 100–149 | Planned | per `.dev/03_BEHAVIOR_GRAFTS.md` |
+| 5 | Intent | Multi-party coordination primitives (declare / match / cancel / expire) | 200–299 | Placeholder | `intent-graft` (200, `stability = "placeholder"`) |
+
+**Why these bands, and not something simpler:**
+
+- Bands 10–40 and 50–99 are already populated; expanding them would force renumbering shipped grafts.
+- Band 100–149 is a *new* dedicated slot for behavior grafts — resolves an overlap where the old lattice pushed behavior and state into the same 50–99 range.
+- Band 200–299 for intents is deliberately far from state (50–99) and behavior (100–149). Intents compose *above* state and behavior — they coordinate over state transitions rather than implementing state. A numbering gap makes that architectural distance visible when a reviewer skims a `graft-inject` list.
+- Bands 150–199 and 300+ stay reserved for future families or user domain grafts.
+
+**Verification gates do not claim a priority band.** They are library arms imported by commitment grafts via the reserved `[graft.gates]` extension (`gate = "name"` or `gate-chain = ["a", "b"]`). A gate is a parameter, not a stage. See the `[graft.gates]` section below.
+
+**The intent family is a placeholder.** `intent-graft.hoon` reserves the shape and band but crashes loudly on invocation. The Nockchain monorepo has not published a canonical intent structure; Vesl's placeholder will be swapped for the real primitive when upstream lands. Do not build production logic against it. See `.dev/BIFURCATE_INTENT.md` and `.dev/GRAFT_REFACTOR.md` for the reasoning.
 
 ## `[graft.blocks.*]` — injection blocks
 
@@ -238,7 +275,8 @@ Version bumps to this schema append fields, never reshape existing ones.
 EXPANSION's gate catalog will introduce a per-graft gate-binding table.
 **Reserved; not implemented by graft-inject until the gate catalog
 ships.** Documented here so gate-graft authors can write to a stable
-target.
+target. Gates are family 2 in the lattice — a library of parameterized
+decision functions, not grafts in their own right.
 
 ```toml
 [graft.gates]

@@ -202,8 +202,28 @@ async fn check_api_key(
 }
 
 /// Pre-flight auth check (C-004). Call before starting the server.
+///
+/// Loopback-only entry point. Production callers should use
+/// `check_auth_config_with_bind` so the M-15 non-loopback refusal runs.
 pub fn check_auth_config(no_auth: bool) -> Result<(), String> {
+    check_auth_config_with_bind(no_auth, "127.0.0.1")
+}
+
+/// Variant used by the CLI entry point — knows the bind address, so
+/// it can reject `--no-auth` on non-loopback binds.
+///
+/// AUDIT 2026-04-19 M-15: `--no-auth` on an exposed bind leaks state
+/// and lets anyone poke the kernel. Fail-closed when `no_auth` is set
+/// AND `bind_addr` isn't loopback.
+pub fn check_auth_config_with_bind(no_auth: bool, bind_addr: &str) -> Result<(), String> {
     if no_auth {
+        if !is_loopback_bind(bind_addr) {
+            return Err(format!(
+                "--no-auth on bind address `{bind_addr}` is refused. \
+                 --no-auth is only permitted on loopback binds (127.0.0.1, ::1, localhost). \
+                 Set HULL_API_KEY and drop --no-auth, or change bind-addr to loopback."
+            ));
+        }
         NO_AUTH.store(true, Ordering::Relaxed);
         return Ok(());
     }
@@ -215,6 +235,13 @@ pub fn check_auth_config(no_auth: bool) -> Result<(), String> {
                 .into(),
         ),
     }
+}
+
+fn is_loopback_bind(bind_addr: &str) -> bool {
+    let host = bind_addr.rsplit_once(':').map(|(h, _)| h).unwrap_or(bind_addr);
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    matches!(host, "127.0.0.1" | "::1" | "localhost")
+        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------

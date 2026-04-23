@@ -27,13 +27,27 @@
   =/  built=@t  query
   =/  sep  10
   =/  max-bytes=@  ^~((mul 10.000 1.000))
+  ::  AUDIT 2026-04-19 M-12: reject on cumulative OR single-chunk
+  ::  oversize BEFORE `cat` allocates. The prior post-concat check
+  ::  still built the full atom first, so a single attacker chunk with
+  ::  size > max-bytes could OOM the Nock stack before `met` ran.
+  ::
+  ?:  (gth (met 3 built) max-bytes)
+    ~|  %vesl-prompt-too-large
+    !!
   |-
   ?~  dats
     built
-  =/  nex=@t  `@t`(cat 3 (cat 3 built sep) i.dats)
-  ?:  (gth (met 3 nex) max-bytes)
+  ?:  (gth (met 3 i.dats) max-bytes)
+    ~|  %vesl-prompt-chunk-too-large
+    !!
+  ::  +1 for sep, +1 more is a loose upper bound for `met` of the
+  ::  concatenated atom — cheap to check, avoids any overflow surprise.
+  ::
+  ?:  (gth (add (met 3 built) (met 3 i.dats)) (sub max-bytes 2))
     ~|  %vesl-prompt-too-large
     !!
+  =/  nex=@t  `@t`(cat 3 (cat 3 built sep) i.dats)
   $(built nex, dats t.dats)
 ::
 ::  +verify-manifest: prove AI output derives strictly from verified data

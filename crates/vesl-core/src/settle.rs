@@ -1,7 +1,7 @@
 //! Settle — Settlement (heavy tier)
 //!
 //! Two layers:
-//! 1. `Settle<V>` struct — verify via IntentVerifier, manage root registration
+//! 1. `Settle<V>` struct — verify via CommitmentVerifier, manage root registration
 //! 2. Free functions — composable transaction building helpers
 //!
 //! The hull orchestrates kernel boot and poke dispatch. Settle provides
@@ -18,16 +18,16 @@ use nockchain_client_rs::ChainClient;
 use nockchain_tip5_rs::{verify_proof, Tip5Hash};
 
 use crate::guard::Guard;
-use crate::types::{GraftPayload, IntentVerifier, Manifest, Note};
+use crate::types::{CommitmentVerifier, GraftPayload, Manifest, Note};
 
-/// RAG manifest verifier — the built-in `IntentVerifier` implementation.
+/// RAG manifest verifier — the built-in `CommitmentVerifier` implementation.
 ///
 /// Stateless. Deserializes `data` as JSON Manifest, verifies each chunk's
 /// Merkle proof against `expected_root`, and checks prompt reconstruction.
 /// Root registration is handled by Settle (via Guard), not here.
 pub struct RagVerifier;
 
-impl IntentVerifier for RagVerifier {
+impl CommitmentVerifier for RagVerifier {
     fn verify(&self, _note_id: u64, data: &[u8], expected_root: &Tip5Hash) -> bool {
         let manifest: Manifest = match serde_json::from_slice(data) {
             Ok(m) => m,
@@ -82,7 +82,7 @@ impl IntentVerifier for RagVerifier {
     }
 }
 
-pub struct Settle<V: IntentVerifier = RagVerifier> {
+pub struct Settle<V: CommitmentVerifier = RagVerifier> {
     guard: Guard,
     verifier: V,
     settled_ids: HashSet<u64>,
@@ -100,7 +100,7 @@ impl Settle<RagVerifier> {
     }
 }
 
-impl<V: IntentVerifier> Settle<V> {
+impl<V: CommitmentVerifier> Settle<V> {
     /// Create a Settle with a custom verifier (no kernel).
     pub fn with_verifier(verifier: V) -> Self {
         Settle {
@@ -115,7 +115,7 @@ impl<V: IntentVerifier> Settle<V> {
         self.guard.register_root(root)
     }
 
-    /// Settle a payload: verify via the IntentVerifier + state transition.
+    /// Settle a payload: verify via the CommitmentVerifier + state transition.
     ///
     /// Pre-flight checks catch common failures before the kernel sees the
     /// payload. If a poke still crashes after pre-flight, the input violated
@@ -204,7 +204,7 @@ impl<V: IntentVerifier> Settle<V> {
         &self.guard
     }
 
-    /// Access the inner IntentVerifier.
+    /// Access the inner CommitmentVerifier.
     pub fn verifier(&self) -> &V {
         &self.verifier
     }
@@ -554,7 +554,7 @@ mod tests {
         should_pass: bool,
     }
 
-    impl IntentVerifier for MockVerifier {
+    impl CommitmentVerifier for MockVerifier {
         fn verify(&self, _note_id: u64, _data: &[u8], _expected_root: &Tip5Hash) -> bool {
             self.should_pass
         }

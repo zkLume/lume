@@ -62,6 +62,7 @@ pub fn load_config(path: &Path) -> HullConfig {
 // ---------------------------------------------------------------------------
 
 /// Resolve settlement config with hull defaults (demo key for fakenet).
+/// Preserved for tests. Production callers should prefer the checked variant.
 pub fn resolve_with_demo_key(
     cli_mode: Option<SettlementMode>,
     cli_chain_endpoint: Option<String>,
@@ -74,6 +75,31 @@ pub fn resolve_with_demo_key(
 ) -> SettlementConfig {
     let settlement_toml = SettlementToml::from(toml);
     SettlementConfig::resolve(
+        cli_mode,
+        cli_chain_endpoint,
+        cli_submit,
+        cli_tx_fee,
+        cli_coinbase_timelock_min,
+        cli_accept_timeout,
+        cli_seed_phrase,
+        &settlement_toml,
+        Some(signing::demo_signing_key()),
+    )
+}
+
+/// Checked variant — surfaces misconfiguration as a typed error for main.rs (L-14).
+pub fn resolve_with_demo_key_checked(
+    cli_mode: Option<SettlementMode>,
+    cli_chain_endpoint: Option<String>,
+    cli_submit: bool,
+    cli_tx_fee: Option<u64>,
+    cli_coinbase_timelock_min: Option<u64>,
+    cli_accept_timeout: Option<u64>,
+    cli_seed_phrase: Option<String>,
+    toml: &HullConfig,
+) -> Result<SettlementConfig, String> {
+    let settlement_toml = SettlementToml::from(toml);
+    SettlementConfig::resolve_checked(
         cli_mode,
         cli_chain_endpoint,
         cli_submit,

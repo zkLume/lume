@@ -1,0 +1,77 @@
+# intent-graft manifest — FAMILY 5 PLACEHOLDER.
+#
+# Reserves the family-5 (intent coordination) slot in vesl's 5-family
+# graft catalog. Every %intent-* cause arm in intent-graft.hoon crashes
+# with %intent-graft-placeholder — do not compose this into production.
+#
+# The shape here is a best-guess sketch drawn from .dev/BIFURCATE_INTENT.md.
+# The Nockchain monorepo has not yet published a canonical intent
+# structure; when it does, this manifest + intent-graft.hoon get swapped
+# for the real primitive. See .dev/GRAFT_REFACTOR.md for the refactor
+# plan and docs/graft-manifest.md for the authoritative priority lattice.
+#
+# Priority 200 sits at the low edge of the 200–299 intent band, well
+# above state (50–99) and behavior (100–149) so the architectural
+# separation (intents compose above state, they don't implement state)
+# shows up in the lattice itself.
+
+[graft]
+name      = "intent-graft"
+version   = "0.0.0-placeholder"
+priority  = 200
+stability = "placeholder"
+after     = []
+
+[graft.blocks.imports]
+sentinel = "*intent-graft"
+body     = """
+/+  *intent-graft"""
+
+[graft.blocks.state]
+sentinel = "intent=intent-state"
+body     = "intent=intent-state"
+
+[graft.blocks.cause]
+sentinel = "intent-cause"
+body     = "intent-cause"
+
+[graft.blocks.poke]
+sentinel = "%intent-declare"
+body     = """
+::
+  %intent-declare
+=/  lc=intent-cause
+  [%intent-declare hull.u.act body.u.act expires-at.u.act]
+=/  [efx=(list intent-effect) new-intent=intent-state]
+  (intent-poke intent.state lc)
+:_  state(intent new-intent)
+^-  (list effect)
+efx
+::
+  %intent-match
+=/  lc=intent-cause  [%intent-match id.u.act proof.u.act]
+=/  [efx=(list intent-effect) new-intent=intent-state]
+  (intent-poke intent.state lc)
+:_  state(intent new-intent)
+^-  (list effect)
+efx
+::
+  %intent-cancel
+=/  lc=intent-cause  [%intent-cancel id.u.act]
+=/  [efx=(list intent-effect) new-intent=intent-state]
+  (intent-poke intent.state lc)
+:_  state(intent new-intent)
+^-  (list effect)
+efx
+::
+  %intent-expire
+=/  lc=intent-cause  [%intent-expire id.u.act]
+=/  [efx=(list intent-effect) new-intent=intent-state]
+  (intent-poke intent.state lc)
+:_  state(intent new-intent)
+^-  (list effect)
+efx"""
+
+[graft.blocks.peek]
+sentinel = "intent-peek"
+body     = "(intent-peek intent.state path)"

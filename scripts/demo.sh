@@ -56,7 +56,21 @@ while [[ $# -gt 0 ]]; do
         --ollama-url)  OLLAMA_URL="$2"; shift 2 ;;
         --ollama-model) OLLAMA_MODEL="$2"; shift 2 ;;
         --port)        HULL_PORT="$2"; shift 2 ;;
-        --expose-external) HULL_BIND_ADDR="0.0.0.0"; shift ;;
+        --expose-external)
+            # AUDIT 2026-04-19 L-17: exposing the hull to a network
+            # without authentication leaks state and accepts unauthenticated
+            # kernel pokes. Refuse unless VESL_API_KEY is set (matches the
+            # M-15 fail-closed check on the Rust side).
+            if [[ -z "${VESL_API_KEY:-}" ]]; then
+                echo "ERROR: --expose-external refused: VESL_API_KEY is not set." >&2
+                echo "       Exposing on 0.0.0.0 without auth would leak /status and" >&2
+                echo "       accept unauthenticated kernel pokes. Set VESL_API_KEY and" >&2
+                echo "       retry, or drop --expose-external to stay on loopback." >&2
+                exit 1
+            fi
+            HULL_BIND_ADDR="0.0.0.0"
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""

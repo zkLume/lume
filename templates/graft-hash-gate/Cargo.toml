@@ -1,12 +1,12 @@
 [package]
-name = "graft-intent"
-version = "0.0.0-placeholder"
+name = "graft-hash-gate"
+version = "0.1.0"
 edition = "2021"
 authors = ["Vesl Examples <examples@vesl.local>"]
-description = "Family-5 intent-graft placeholder template — crashes on any %intent-* poke, pending canonical upstream"
+description = "NockApp with custom (non-RAG) verification gate — proves the Graft is domain-agnostic"
 
 [[bin]]
-name = "graft-intent"
+name = "graft-hash-gate"
 path = "src/main.rs"
 
 [dependencies]
@@ -14,6 +14,8 @@ nockapp = { git = "https://github.com/nockchain/nockchain.git", rev = "505c3ea58
 nockvm = { git = "https://github.com/nockchain/nockchain.git", rev = "505c3ea586bacfece2d451fbd01dfa18105facea" }
 nockvm_macros = { git = "https://github.com/nockchain/nockchain.git", rev = "505c3ea586bacfece2d451fbd01dfa18105facea" }
 
+# Vesl — Mint for commitment, no RAG dependencies needed
+vesl-core = { path = "../../crates/vesl-core" }
 nock-noun-rs = { path = "../../crates/nock-noun-rs" }
 
 tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }

@@ -1,97 +1,65 @@
-# graft-intent
+# graft-intent (placeholder)
 
-A NockApp with a custom (non-RAG) verification gate grafted in.
+**This is a placeholder, not a working primitive.** It exists to reserve the family-5 (intent coordination) slot in vesl's 5-family graft catalog. Every `%intent-*` poke the kernel receives crashes with `%intent-graft-placeholder`. That crash is the point.
 
-## About this template
+## Why reserve the slot instead of building the real thing?
 
-Finished scaffold. Copy it, rename in `Cargo.toml` if you want a different crate name, and build. No renderer, no `graft-inject` step required — the template is already a complete example. For graft-inject composition against a marker-bearing reference kernel, start from `templates/app.hoon` instead.
+The Nockchain monorepo has not yet published a canonical intent structure. Any shape vesl picks today will probably be wrong by the time upstream lands. Rather than commit to semantics that get thrown away, the placeholder locks down:
 
-## Why This Exists
+- the family-5 priority band (200–299) so other grafts don't scribble on it,
+- the `intent-graft` name so the cause-tag namespace (`%intent-declare`, `%intent-match`, `%intent-cancel`, `%intent-expire`) stays available,
+- the manifest shape (`stability = "placeholder"`, priority 200) so `graft-inject` tooling knows how to list it.
 
-`graft-mint` and `graft-settle` use RAG verification — manifests, Merkle proofs, prompt reconstruction. That's one gate. The Graft doesn't care what your gate does. This template proves it.
+When upstream publishes, `intent-graft.hoon` and this template get swapped for the real primitive in a single PR. Nothing structural around it has to change.
 
-The verification gate here is one line:
-
-```hoon
-=((hash-leaf ;;(@ data)) expected-root)
-```
-
-Hash the data, compare to root. No manifest types, no `sur/vesl.hoon`, no `rag-logic.hoon`. The Graft is domain-agnostic — the gate is yours.
-
-## What's Grafted
-
-**Domain logic:**
-- `%declare intent` — register an intent string
-- `/intent/<id>` — peek at an intent
-- `/count` — how many intents
-
-**Grafted verification (custom gate):**
-- `%settle-register hull root` — register a Merkle root
-- `%settle-verify payload` — verify data against root via hash gate
-- `%settle-note payload` — verify + settle (state transition + replay guard)
-- `/settle-registered/<hull>`, `/settle-root/<hull>`, `/settle-noted/<note-id>`
-
-## The Custom Gate Pattern
-
-Define your gate inline where you delegate pokes:
-
-```hoon
-=/  hash-gate=verify-gate
-  |=  [note-id=@ data=* expected-root=@]
-  ^-  ?
-  =((hash-leaf ;;(@ data)) expected-root)
-=/  [efx=(list settle-effect) new-settle=settle-state]
-  (settle-poke settle.state lc hash-gate)
-```
-
-The gate signature is `$-([note-id=@ data=* expected-root=@] ?)`. Cast `data` to your domain type, verify however you want, return a loobean. Bind `note-id` into the data if you want pre-commit protection (see `.dev/AUDIT_REPORT.md` H-03).
-
-## Build & Run
-
-```bash
-# Compile Hoon kernel (requires $NOCK_HOME for tip5 primitives)
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
-
-# Build Rust binary
-cargo build
-
-# Run
-cargo run
-```
-
-## Files
+## What lives here
 
 ```
 hoon/
-  app/app.hoon          — the kernel (intents + custom hash gate)
-  lib/settle-graft.hoon — composable state and poke dispatcher
-  lib/vesl-merkle.hoon  — Merkle primitives (tip5)
-  common/wrapper.hoon   — NockApp protocol
-src/main.rs             — Rust driver with Mint commitment demo
+  app/app.hoon          — minimal kernel composing intent-graft
+  lib/intent-graft.hoon — the crashing placeholder library
+  common/wrapper.hoon   — NockApp protocol wrapper
+src/main.rs             — driver that pokes %intent-declare and reports the crash
+MOVED.md                — redirect stub: the old `graft-intent` hash-gate demo now lives at `templates/graft-hash-gate/`
 ```
 
-## Writing Your Own Gate
+## Running it
 
-The gate type is `verify-gate`:
+```bash
+# Compile (from the vesl repo root — resolves hoon/lib/ via the vesl tree):
+hoonc templates/graft-intent/hoon/app/app.hoon hoon/ --new
+cp out.jam templates/graft-intent/out.jam
 
-```hoon
-+$  verify-gate  $-([note-id=@ data=* expected-root=@] ?)
+# Build the Rust driver:
+cd templates/graft-intent && cargo build
+
+# Run — expect a crash:
+./target/debug/graft-intent
 ```
 
-`data` is opaque `*`. Cast it to whatever your domain needs:
+Running the binary pokes `%intent-declare` at the placeholder kernel and reports the `%intent-graft-placeholder` crash trace. If the poke returns without crashing, the placeholder has been tampered with — check that `hoon/lib/intent-graft.hoon` still has its bang arms.
 
-```hoon
-::  hash comparison (this template)
-=((hash-leaf ;;(@ data)) expected-root)
+## What the real `graft-intent` will do
 
-::  RAG manifest verification (graft-mint, graft-settle)
-(verify-manifest ;;(manifest data) expected-root)
+The intended shape (see `.dev/BIFURCATE_INTENT.md` for the full design sketch) is multi-party coordination over state transitions:
 
-::  signature check (your domain)
-(verify-signature ;;(signed-payload data) expected-root)
+- `%intent-declare` — register an open intent under a hull, with optional expiry
+- `%intent-match` — flip an open intent to matched, after the domain verified satisfaction
+- `%intent-cancel` — declarer-initiated close of an open intent
+- `%intent-expire` — time-driven close once `expires-at` passes
 
-::  always true (testing)
-%.y
-```
+None of these are wired up today. The types are declared, the cause tags are reserved, and the arms crash. That is the entire contract.
 
-~
+## Other families
+
+The other four families in vesl's graft catalog:
+
+| # | Family | Status | Where |
+|---|---|---|---|
+| 1 | Commitment | Shipped | `protocol/lib/{settle,mint,guard,forge}-graft.hoon` |
+| 2 | Verification gates | Scaffolded | `.dev/01_GATE_CATALOG.md` |
+| 3 | State | Planned | `.dev/02_STATE_GRAFTS.md` |
+| 4 | Behavior | Planned | `.dev/03_BEHAVIOR_GRAFTS.md` |
+| 5 | Intent | **Placeholder** | you are here |
+
+The authoritative lattice is in [`docs/graft-manifest.md`](../../docs/graft-manifest.md).

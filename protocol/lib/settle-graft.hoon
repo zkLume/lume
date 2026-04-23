@@ -168,8 +168,18 @@
     ::    Crash semantics: ?> on gate failure = unprovable STARK.
     ::
       %settle-note
-    =/  raw=*  (cue payload.cause)
-    =/  args=graft-payload  ;;(graft-payload raw)
+    ::  AUDIT 2026-04-19 M-02 / M-11: wrap cue + sieve in mule so a
+    ::  malformed payload atom emits %settle-error instead of panicking
+    ::  the kernel. Prior audit tracked this only on %settle / %prove.
+    ::
+    =/  parsed
+      %-  mule  |.
+      =/  raw=*  (cue payload.cause)
+      ;;(graft-payload raw)
+    ?:  ?=(%| -.parsed)
+      :_  state
+      ~[[%settle-error 'settle-graft: malformed payload']]
+    =/  args=graft-payload  p.parsed
     ::  Guard: reject unregistered roots
     ::
     ?.  (~(has by registered.state) hull.note.args)
@@ -193,9 +203,22 @@
     ?:  (~(has in prior-settled.state) id.note.args)
       :_  state
       ~[[%settle-error 'settle-graft: note already settled (prior epoch)']]
+    ::  AUDIT 2026-04-19 M-11: mule-wrap the gate call too. The gate
+    ::  may `;;(domain-type data)` internally — a crafted `data` subtree
+    ::  otherwise panics the kernel from the gate-author's sieve.
+    ::  A loobean %.n still crashes via ?> below (preserves STARK
+    ::  unprovability). Only a runtime crash gets converted to a typed
+    ::  effect here.
+    ::
+    =/  veri-result
+      %-  mule  |.
+      (veri id.note.args data.args expected-root.args)
+    ?:  ?=(%| -.veri-result)
+      :_  state
+      ~[[%settle-error 'settle-graft: verify gate crashed']]
     ::  Verify via caller's gate — crash on failure
     ::
-    ?>  (veri id.note.args data.args expected-root.args)
+    ?>  p.veri-result
     ::  Apply settlement. Rotate iff the current epoch is already at cap.
     ::
     =/  at-cap=?  (gte settle-count.state epoch-cap)
@@ -223,8 +246,18 @@
     ::    Returns [%settle-verified %.y] or [%settle-verified %.n].
     ::
       %settle-verify
-    =/  raw=*  (cue payload.cause)
-    =/  args=graft-payload  ;;(graft-payload raw)
+    ::  AUDIT 2026-04-19 M-11: mule-wrap cue + sieve. %settle-verify is
+    ::  documented as a soft preflight; crashing on malformed payload
+    ::  would break that contract for polling callers.
+    ::
+    =/  parsed
+      %-  mule  |.
+      =/  raw=*  (cue payload.cause)
+      ;;(graft-payload raw)
+    ?:  ?=(%| -.parsed)
+      :_  state
+      ~[[%settle-verified %.n]]
+    =/  args=graft-payload  p.parsed
     ::  Check registration
     ::
     ?.  (~(has by registered.state) hull.note.args)
@@ -243,11 +276,18 @@
     ?.  =(root.note.args expected-root.args)
       :_  state
       ~[[%settle-verified %.n]]
-    ::  Verify via caller's gate — soft failure (no crash)
+    ::  AUDIT 2026-04-19 M-11: mule-wrap gate too. A crafted `data`
+    ::  subtree that the gate's internal `;;` rejects would otherwise
+    ::  crash the kernel inside the nominally-soft verify path.
     ::
-    =/  ok=?  (veri id.note.args data.args expected-root.args)
+    =/  veri-result
+      %-  mule  |.
+      (veri id.note.args data.args expected-root.args)
+    ?:  ?=(%| -.veri-result)
+      :_  state
+      ~[[%settle-verified %.n]]
     :_  state
-    ~[[%settle-verified ok]]
+    ~[[%settle-verified p.veri-result]]
   ==
 ::
 ::  +settle-peek: query settle state by path

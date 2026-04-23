@@ -279,7 +279,12 @@ pub(crate) fn ubig_to_belts8(val: &UBig) -> [Belt; 8] {
     let mask = UBig::from(0xFFFF_FFFFu64);
     for belt in &mut belts {
         let chunk = &v & &mask;
-        *belt = Belt(u64::try_from(&chunk).unwrap_or(0));
+        // AUDIT 2026-04-19 L-18: chunk is `v & 0xFFFF_FFFF`, so it fits
+        // in 32 bits (and therefore in u64) by construction. A silent
+        // `unwrap_or(0)` would mask any invariant break and zero the
+        // limb, producing invalid key material. Prefer a named
+        // expect so the crash localizes the problem.
+        *belt = Belt(u64::try_from(&chunk).expect("chunk is 32-bit by construction"));
         v >>= 32;
     }
     belts

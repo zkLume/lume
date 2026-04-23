@@ -1,6 +1,8 @@
 # Vesl
 
-A verification SDK for Nockchain. Four primitives — **mint** (commit), **guard** (verify), **settle** (on-chain), **forge** (STARK-prove) — each shipping as a Hoon kernel with a Rust facade in `vesl-core`, graft templates for adding them to an existing NockApp, and `hull-rag` as a reference implementation.
+A verification SDK for Nockchain. Four commitment primitives — **mint** (commit), **guard** (verify), **settle** (on-chain), **forge** (STARK-prove) — each shipping as a Hoon kernel with a Rust facade in `vesl-core`, graft templates for adding them to an existing NockApp, and `hull-rag` as a reference implementation.
+
+Grafts in Vesl fall into five families: **commitment** (shipped), **verification gates** (scaffolded library), **state** (planned), **behavior** (planned), and **intent** (placeholder, pending canonical upstream). The priority lattice in [`docs/graft-manifest.md`](docs/graft-manifest.md) is the authoritative map; the summary below groups the current primitive list the same way.
 
 
 ## Demo
@@ -20,15 +22,20 @@ Ingest documents, retrieve against a query, verify in the kernel, settle. `--no-
 
 ```
 protocol/                       Hoon source
-  lib/mint-kernel.hoon            commit data → root
-  lib/guard-kernel.hoon           verify inclusion proofs
-  lib/settle-kernel.hoon          on-chain settlement
-  lib/forge-kernel.hoon           STARK-prove arbitrary computation
-  lib/vesl-merkle.hoon            tip5 Merkle math
-  lib/vesl-prover.hoon            STARK proof generation
-  lib/vesl-verifier.hoon          STARK proof verification
-  lib/settle-graft.hoon           gate-agnostic composition
-  lib/vesl-test.hoon              compile-time assertions
+  lib/                            grafts + kernels, grouped by family (see catalog below)
+    mint-kernel.hoon                family 1 — commit data → root
+    guard-kernel.hoon               family 1 — verify inclusion proofs
+    settle-kernel.hoon              family 1 — on-chain settlement
+    forge-kernel.hoon               family 1 — STARK-prove arbitrary computation
+    mint-graft.hoon                 family 1 — mint composition (priority 20)
+    guard-graft.hoon                family 1 — guard composition (priority 30)
+    settle-graft.hoon               family 1 — settle composition (priority 10)
+    forge-graft.hoon                family 1 — forge composition (priority 40)
+    intent-graft.hoon               family 5 — placeholder (priority 200, crashes on invocation)
+    vesl-merkle.hoon                tip5 Merkle math
+    vesl-prover.hoon                STARK proof generation
+    vesl-verifier.hoon              STARK proof verification
+    vesl-test.hoon                  compile-time assertions
   sur/vesl.hoon                   types
 
 kernels/                        compiled kernel crates (one per JAM)
@@ -45,16 +52,31 @@ hull-rag/                       reference implementation — verifiable RAG
   tests/                          37 E2E tests (pipeline, adversarial, fakenet)
 
 templates/                      starter NockApps + graft templates
-  counter/  data-registry/  settle-report/    teach the core patterns
-  graft-scaffold/  graft-mint/  graft-settle/  graft-intent/
-                                  drop verification onto an existing NockApp
-  GRAFTING.md                     long-form integration guide
+  counter/  data-registry/  settle-report/       teach the core patterns
+  graft-scaffold/  graft-mint/  graft-settle/    commitment-family grafts
+  graft-hash-gate/                                custom-gate demo (formerly graft-intent)
+  graft-intent/                                   family-5 placeholder stub (see MOVED.md)
+  GRAFTING.md                                     long-form integration guide
 
 assets/                         compiled kernel JAMs
 demo/                           sample documents for the hull-rag pipeline
 scripts/                        demo + fakenet harness
 hoon/                           symlink tree (setup-hoon-tree.sh links $NOCK_HOME)
 ```
+
+## Primitive families
+
+Five graft families, one row each. Priority bands come straight from [`docs/graft-manifest.md`](docs/graft-manifest.md); see that file for the rationale behind the lattice.
+
+| # | Family | Role | Priority band | Status | What ships today |
+|---|---|---|---|---|---|
+| 1 | Commitment | STARK-bearing primitives that commit data to hull-keyed roots | 10–40 | Shipped | `settle-graft` (10), `mint-graft` (20), `guard-graft` (30), `forge-graft` (40) |
+| 2 | Verification gates | Parameterized decision functions consumed by commitment grafts; a library, not a priority-claimed graft | n/a (library) | Scaffolded | `vesl-gates.hoon` (planned; see `.dev/01_GATE_CATALOG.md`) |
+| 3 | State | Domain-keyed app-state primitives (kv, counter, queue, rbac, registry) | 50–99 | Planned | see `.dev/02_STATE_GRAFTS.md` |
+| 4 | Behavior | Runtime wrappers that enforce or observe rules around other grafts | 100–149 | Planned | see `.dev/03_BEHAVIOR_GRAFTS.md` |
+| 5 | Intent | Multi-party coordination primitives (declare / match / cancel / expire) | 200–299 | Placeholder | `intent-graft` stub; crashes on invocation pending canonical upstream |
+
+Commitments do not require intents. A NockApp can produce a ZK proof and settle it without ever declaring an intent. Intents are optional coordination on top of commitments — the STARK pipeline itself is intent-free.
 
 
 ## Nockchain for Rust Developers

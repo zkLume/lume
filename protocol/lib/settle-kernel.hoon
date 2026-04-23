@@ -90,8 +90,19 @@
       ::    Guards: root must be registered, note ID must not be settled
       ::
         %settle
-      =/  raw=*  (cue payload.u.act)
-      =/  args=settlement-payload  ;;(settlement-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve so a malformed
+      ::  payload atom emits a typed error instead of panicking.
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(settlement-payload raw)
+      ?:  ?=(%| -.parsed)
+        ~>  %slog.[3 'settle: malformed settle payload']
+        :_  state
+        ^-  (list effect)
+        ~[[%settle-error 'settle: malformed payload']]
+      =/  args=settlement-payload  p.parsed
       ::  Guard: reject unregistered roots
       ::
       ?.  (~(has by registered.state) hull.note.args)
@@ -121,8 +132,19 @@
       ::  %verify — verify manifest (read-only, no state change)
       ::
         %verify
-      =/  raw=*  (cue payload.u.act)
-      =/  args=settlement-payload  ;;(settlement-payload raw)
+      ::  AUDIT 2026-04-19 M-02: mule-wrap cue + sieve. %verify is a
+      ::  read-only soft preflight — crashing on malformed payload
+      ::  contradicts the contract for polling callers.
+      ::
+      =/  parsed
+        %-  mule  |.
+        =/  raw=*  (cue payload.u.act)
+        ;;(settlement-payload raw)
+      ?:  ?=(%| -.parsed)
+        :_  state
+        ^-  (list effect)
+        ~[[%verified %.n]]
+      =/  args=settlement-payload  p.parsed
       ?.  (~(has by registered.state) hull.note.args)
         :_  state
         ^-  (list effect)

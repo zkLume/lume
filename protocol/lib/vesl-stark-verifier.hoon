@@ -16,6 +16,13 @@
   =|  test-mode=_|
   |=  [=proof override=(unit (list term)) verifier-eny=@ s=* f=*]
   ^-  ?
+  ::  AUDIT 2026-04-19 C-lead-4: pin version.proof = %2. vesl-prover only
+  ::  emits %2; accepting %0 / %1 here would let an attacker re-tag a v2
+  ::  proof and replay it against v0/v1 preprocessing data. version.proof
+  ::  is unabsorbed by the Fiat-Shamir transcript upstream, so we refuse
+  ::  at the verifier boundary instead.
+  ::
+  ?>  ?=(%2 version.proof)
   =/  nock-common=_nock-common-v0-v1
     ?-  version.proof
       %0  nock-common-v0-v1
@@ -39,6 +46,9 @@
   =|  test-mode=_|
   |=  [=proof override=(unit (list term)) verifier-eny=@ s=* f=* expected-root=@ expected-hull=@]
   ^-  ?
+  ::  AUDIT 2026-04-19 C-lead-4: pin version.proof = %2 (see +verify).
+  ::
+  ?>  ?=(%2 version.proof)
   =/  nock-common=_nock-common-v0-v1
     ?-  version.proof
       %0  nock-common-v0-v1

@@ -67,6 +67,13 @@
     ::
     ::  [11 ...] — strip hints (semantically transparent)
     ::
+    ::  Both branches return `(lower +.+.f)` intentionally. Nock
+    ::  axis math: dynamic [11 [b c] d] has d at +.+, static [11 b c]
+    ::  has c at +.+. The branch exists because we still need to
+    ::  disambiguate which form we have — lowering is identical once
+    ::  chosen. AUDIT 2026-04-19 L-22: documented to head off the
+    ::  "copy-paste bug" misread.
+    ::
       %11
     ?^  -.+.f
       (lower +.+.f)                                ::  dynamic: [11 [b c] d] → d'
@@ -86,7 +93,10 @@
 ++  make-edit
   |=  ax=@
   ^-  *
-  ?:  =(ax 0)  !!
+  ::  AUDIT 2026-04-19 L-10: axis=0 is invalid per Nock (axes are
+  ::  1-indexed). Named crash so traces attribute clearly across VMs.
+  ::
+  ?:  =(ax 0)  ~|('vesl-lower: Nock 10 axis 0 is invalid' !!)
   ?:  =(ax 1)  [%0 5]
   ::  axis → root-to-target path
   ::  %.n = head (even), %.y = tail (odd)

@@ -1,3 +1,36 @@
+# `protocol/lib/`
+
+Hoon source for Vesl's protocol layer — kernels, grafts, support libraries, and the compile-time test framework.
+
+## Graft catalog
+
+Grafts are grouped into five families on a priority lattice (authoritative map: [`docs/graft-manifest.md`](../../docs/graft-manifest.md)). Family 1 (commitment) is what ships here today:
+
+| Graft | Priority | Purpose |
+|---|---|---|
+| `settle-graft.hoon` | 10 | Gate-agnostic settlement — verify a payload against a committed root + state transition |
+| `mint-graft.hoon` | 20 | Data commitment — mint a Merkle root from chunks |
+| `guard-graft.hoon` | 30 | Inclusion-proof verification against a registered root |
+| `forge-graft.hoon` | 40 | STARK proof of arbitrary Nock computation |
+
+Family 5 (intent) reserves a placeholder — `intent-graft.hoon` (priority 200) — whose arms crash on invocation pending a canonical upstream intent structure. Family 2 (verification gates) is a planned library of parameter arms consumed by family-1 grafts; families 3 (state) and 4 (behavior) are roadmap items documented in `.dev/02_STATE_GRAFTS.md` and `.dev/03_BEHAVIOR_GRAFTS.md`.
+
+The support libraries (`vesl-merkle`, `vesl-prover`, `vesl-verifier`, `vesl-stark-verifier`, `vesl-entrypoint`, `rag-logic`, `vesl-lower`) are not grafts — they're the math, proof, and type plumbing that commitment grafts rely on.
+
+## Adding a new library
+
+A fresh `.hoon` in this directory is not reachable until it is symlinked into `hoon/lib/`. `hoonc` resolves `/+ *name` against the library root passed on its command line (vesl passes `hoon/`), and `hoon/lib/` is the symlink tree — files only exist at `protocol/lib/`.
+
+Checklist for a new `protocol/lib/<name>.hoon`:
+
+1. `cd hoon/lib && ln -s ../../protocol/lib/<name>.hoon <name>.hoon` (relative, matches the existing entries). Verify with `ls -la hoon/lib/<name>.hoon`.
+2. If the new file is a graft, write a sibling `<name>.toml` manifest and add both files to `vesl-nockup/sync.sh`'s library copy list so downstream mirrors pick them up.
+3. Write a compile-time test at `protocol/tests/test-<name>.hoon` that `/+ *<name>` imports it, and run `hoonc --arbitrary protocol/tests/test-<name>.hoon hoon/ --new`. An `out.jam` appearing is the signal that both the library and the symlink landed correctly.
+
+If the symlink is missing, hoonc exits 2, emits `[DIAG soft] DETERMINISTIC error mote=Exit`, and produces no `out.jam`. The trace blames hoonc internals rather than your file — check `hoon/lib/` before chasing type errors.
+
+---
+
 # vesl-test
 
 > The Nockchain ecosystem has zero testing infrastructure. This is the first.
