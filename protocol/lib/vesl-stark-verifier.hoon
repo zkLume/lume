@@ -536,9 +536,9 @@
     ^-  ?
     =/  args  [proof override verifier-eny test-mode s f]
     =/  result  (mule |.((verify-inner args)))
-    ?.  -.result
+    ?.  ?=(%& -.result)
       %.n
-    =/  vr=verify-result  +.result
+    =/  vr=verify-result  p.result
     =/  root-digest=noun-digest:tip5  (atom-to-digest:tip5 expected-root)
     =/  hull-digest=noun-digest:tip5  (atom-to-digest:tip5 expected-hull)
     ?&  =(commitment.vr root-digest)
