@@ -14,6 +14,7 @@ use clap::Parser;
 use nockapp::kernel::boot;
 use nockapp::wire::{SystemWire, Wire};
 use nockapp::NockApp;
+use nockvm::noun::NounAllocator;
 use tempfile::TempDir;
 
 use vesl_core::forge::{
@@ -242,12 +243,23 @@ async fn forge_verify_bad_root_returns_false() {
     // Check the effect is [%verified %.n] (loobean false = atom 1)
     let slab = &effects[0];
     let root_noun = unsafe { *slab.root() };
-    let cell = root_noun.as_cell().expect("effect must be a cell");
-    let tag = cell.head().as_atom().expect("tag is an atom");
-    let tag_bytes = tag.as_ne_bytes();
+    let space = slab.noun_space();
+    let cell_h = nockvm::noun::NounHandle::new(root_noun, &space)
+        .as_cell()
+        .expect("effect must be a cell");
+    let tag_atom_h = cell_h
+        .head()
+        .as_atom()
+        .expect("tag is an atom");
+    let tag_bytes = tag_atom_h.as_ne_bytes();
     let len = tag_bytes.iter().rposition(|&b| b != 0).map_or(0, |p| p + 1);
     assert_eq!(&tag_bytes[..len], b"verified", "effect tag must be %verified");
-    let ok_val = cell.tail().as_atom().expect("ok=? is an atom").as_u64().unwrap();
+    let ok_val = cell_h
+        .tail()
+        .as_atom()
+        .expect("ok=? is an atom")
+        .as_u64()
+        .unwrap();
     assert_eq!(ok_val, 1, "root mismatch must return %.n (loobean false = 1)");
 }
 

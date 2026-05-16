@@ -52,6 +52,7 @@ use nockchain_types::tx_engine::v1::note::{
 };
 use nockchain_types::tx_engine::v1::tx::{Lock, LockPrimitive, Pkh, SpendCondition};
 use nockvm::ext::make_tas;
+use nockvm::noun::NounAllocator;
 use nockvm::jets::cold::Nounable;
 use nockvm::noun::{D, SIG, T};
 use noun_serde::prelude::*;
@@ -172,8 +173,9 @@ impl WalletKernel {
 
         // SAFETY: result is a NounSlab returned from NockApp::peek. The root
         // is valid while the slab is live. from_noun reads but does not take ownership.
+        let space = result.noun_space();
         let decoded: Option<Option<Vec<ChainHash>>> =
-            unsafe { Option::from_noun(result.root())? };
+            unsafe { Option::from_noun(result.root(), &space)? };
         Ok(decoded.flatten().unwrap_or_default())
     }
 
@@ -195,8 +197,9 @@ impl WalletKernel {
 
         // SAFETY: result is a NounSlab returned from NockApp::peek. The root
         // is valid while the slab is live. from_noun reads but does not take ownership.
+        let space = result.noun_space();
         let decoded: Option<Option<Vec<String>>> =
-            unsafe { Option::from_noun(result.root())? };
+            unsafe { Option::from_noun(result.root(), &space)? };
         Ok(decoded.flatten().unwrap_or_default())
     }
 }

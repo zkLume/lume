@@ -32,7 +32,7 @@ async fn kernel_boots_and_accepts_pokes() {
         let bytes = b"register";
         unsafe {
             let mut ind = IndirectAtom::new_raw_bytes_ref(&mut slab, bytes);
-            ind.normalize_as_atom().as_noun()
+            ind.normalize_as_atom_stack().as_noun()
         }
     };
     let id: Noun = D(7);
@@ -40,7 +40,7 @@ async fn kernel_boots_and_accepts_pokes() {
     let root_bytes = [0xAA_u8; 32];
     let root_noun = unsafe {
         let mut ind = IndirectAtom::new_raw_bytes_ref(&mut slab, &root_bytes);
-        ind.normalize_as_atom().as_noun()
+        ind.normalize_as_atom_stack().as_noun()
     };
     let cause = T(&mut slab, &[tag, id, root_noun]);
     slab.set_root(cause);

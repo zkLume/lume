@@ -38,7 +38,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
-use nockvm::noun::{IndirectAtom, Noun, D, T};
+use nockvm::noun::{IndirectAtom, Noun, NounAllocator, NounHandle, D, T};
 
 use crate::merkle::hash_leaf;
 
@@ -260,7 +260,7 @@ fn u64_to_noun(slab: &mut NounSlab<NockJammer>, val: u64) -> Noun {
         // normalize_as_atom produces a canonical atom.
         unsafe {
             let mut indirect = IndirectAtom::new_raw_bytes_ref(slab, &bytes);
-            indirect.normalize_as_atom().as_noun()
+            indirect.normalize_as_atom_stack().as_noun()
         }
     }
 }
@@ -279,7 +279,9 @@ fn find_u64_entry(data: &NoteData, key: &str) -> Result<u64> {
     let atom = noun
         .as_atom()
         .map_err(|_| anyhow::anyhow!("expected atom for key '{key}', got cell"))?;
-    atom.as_u64()
+    let space = slab.noun_space();
+    atom.in_space(&space)
+        .as_u64()
         .map_err(|_| anyhow::anyhow!("atom for key '{key}' does not fit in u64"))
 }
 
@@ -292,20 +294,20 @@ fn find_hash_entry(data: &NoteData, key: &str) -> Result<Tip5Hash> {
     let mut slab: NounSlab<NockJammer> = NounSlab::new();
     slab.cue_into(entry.blob.clone())
         .context("failed to cue NoteDataEntry blob")?;
-    let mut noun = slab_root(&slab);
+    let space = slab.noun_space();
+    let mut noun = NounHandle::new(slab_root(&slab), &space);
     let mut limbs = [0u64; 5];
     for (i, limb) in limbs.iter_mut().enumerate() {
-        let cell = noun
+        let cell_h = noun
             .as_cell()
             .map_err(|_| anyhow::anyhow!("tip5 hash list too short at index {i} for key '{key}'"))?;
-        let atom = cell
+        *limb = cell_h
             .head()
             .as_atom()
-            .map_err(|_| anyhow::anyhow!("tip5 limb {i} is not an atom for key '{key}'"))?;
-        *limb = atom
+            .map_err(|_| anyhow::anyhow!("tip5 limb {i} is not an atom for key '{key}'"))?
             .as_u64()
             .map_err(|_| anyhow::anyhow!("tip5 limb {i} exceeds u64 for key '{key}'"))?;
-        noun = cell.tail();
+        noun = cell_h.tail();
     }
     Ok(limbs)
 }
@@ -353,9 +355,11 @@ fn find_opaque_bytes_entry(data: &NoteData, key: &str) -> Result<Vec<u8>> {
         .context("failed to cue NoteDataEntry blob")?;
     let noun = slab_root(&slab);
 
+    let space = slab.noun_space();
     if let Ok(atom) = noun.as_atom() {
         // Legacy format or empty: single atom
-        let bytes = atom.as_ne_bytes();
+        let atom_h = atom.in_space(&space);
+        let bytes = atom_h.as_ne_bytes();
         let len = bytes
             .iter()
             .rposition(|&b| b != 0)
@@ -364,17 +368,16 @@ fn find_opaque_bytes_entry(data: &NoteData, key: &str) -> Result<Vec<u8>> {
     } else {
         // Belt-list format: Nock list of 7-byte LE chunks
         let mut result = Vec::new();
-        let mut cursor = noun;
-        while let Ok(cell) = cursor.as_cell() {
-            let chunk_atom = cell
+        let mut cursor = NounHandle::new(noun, &space);
+        while let Ok(cell_h) = cursor.as_cell() {
+            let val = cell_h
                 .head()
                 .as_atom()
-                .map_err(|_| anyhow::anyhow!("belt-list chunk is not an atom for key '{key}'"))?;
-            let val = chunk_atom
+                .map_err(|_| anyhow::anyhow!("belt-list chunk is not an atom for key '{key}'"))?
                 .as_u64()
                 .map_err(|_| anyhow::anyhow!("belt-list chunk exceeds u64 for key '{key}'"))?;
             result.extend_from_slice(&val.to_le_bytes()[..7]);
-            cursor = cell.tail();
+            cursor = cell_h.tail();
         }
         // Trim trailing zero padding from the last (possibly short) chunk.
         // Safe for JAM'd data which always ends with a non-zero byte.

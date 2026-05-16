@@ -35,6 +35,8 @@
 //! 5. Query chain to confirm Note contains correct Merkle root and settlement data
 //! 6. Attempt settlement with tampered data, confirm rejection
 
+use nockvm::noun::NounAllocator;
+
 // ---------------------------------------------------------------------------
 // Shared test configuration
 // ---------------------------------------------------------------------------
@@ -856,17 +858,18 @@ async fn fakenet_wallet_kernel_create_tx_synthetic() {
     let mut markdown_text = String::new();
     for (i, effect_slab) in effects.iter().enumerate() {
         let root = unsafe { *effect_slab.root() };
-        if let Ok(cell) = root.as_cell() {
-            if let Ok(head_atom) = cell.head().as_atom() {
-                let tag_bytes = head_atom.as_ne_bytes();
+        let space = effect_slab.noun_space();
+        if let Ok(cell_h) = nockvm::noun::NounHandle::new(root, &space).as_cell() {
+            if let Ok(head_atom_h) = cell_h.head().as_atom() {
+                let tag_bytes = head_atom_h.as_ne_bytes();
 
                 if tag_matches(tag_bytes, b"file") {
                     found_file_write = true;
                     println!("    Effect {i}: [%file ...] (transaction file write)");
                 } else if tag_matches(tag_bytes, b"markdown") {
                     found_markdown = true;
-                    if let Ok(tail_atom) = cell.tail().as_atom() {
-                        let text_bytes = tail_atom.as_ne_bytes();
+                    if let Ok(tail_atom_h) = cell_h.tail().as_atom() {
+                        let text_bytes = tail_atom_h.as_ne_bytes();
                         if let Ok(text) = std::str::from_utf8(text_bytes) {
                             markdown_text = text.to_string();
                             let preview = if text.len() > 200 { &text[..200] } else { text };
@@ -874,9 +877,8 @@ async fn fakenet_wallet_kernel_create_tx_synthetic() {
                         }
                     }
                 } else if tag_matches(tag_bytes, b"exit") {
-                    let tail = cell.tail();
-                    if let Ok(atom) = tail.as_atom() {
-                        if let Ok(v) = atom.as_u64() {
+                    if let Ok(atom_h) = cell_h.tail().as_atom() {
+                        if let Ok(v) = atom_h.as_u64() {
                             println!("    Effect {i}: [%exit {v}]");
                         } else {
                             println!("    Effect {i}: [%exit <large>]");

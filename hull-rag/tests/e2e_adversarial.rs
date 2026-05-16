@@ -305,7 +305,7 @@ async fn adversarial_4_invalid_jam_payload() {
         let bytes = b"settle";
         unsafe {
             let mut indirect = IndirectAtom::new_raw_bytes_ref(&mut slab, bytes);
-            indirect.normalize_as_atom().as_noun()
+            indirect.normalize_as_atom_stack().as_noun()
         }
     };
     // Garbage: 256 bytes of 0xFF — not a valid jammed noun
@@ -313,7 +313,7 @@ async fn adversarial_4_invalid_jam_payload() {
     let payload = {
         unsafe {
             let mut indirect = IndirectAtom::new_raw_bytes_ref(&mut slab, &garbage);
-            indirect.normalize_as_atom().as_noun()
+            indirect.normalize_as_atom_stack().as_noun()
         }
     };
     let cause = T(&mut slab, &[tag, payload]);

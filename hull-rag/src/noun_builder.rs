@@ -185,7 +185,10 @@ mod tests {
 
         assert!(cued.is_cell(), "cued noun must be a cell");
 
-        let outer = cued.as_cell().expect("outer cell");
+        let space = stack.noun_space();
+        let outer = nockvm::noun::NounHandle::new(cued, &space)
+            .as_cell()
+            .expect("outer cell");
         let note_noun = outer.head();
         assert!(note_noun.is_cell(), "note must be a cell");
 

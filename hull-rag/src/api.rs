@@ -35,6 +35,7 @@ use nockapp::kernel::boot::NockStackSize;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::wire::{SystemWire, Wire};
 use nockapp::NockApp;
+use nockvm::noun::NounAllocator;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -797,12 +798,17 @@ async fn query_handler(
 }
 
 /// Render a Nock noun as debug text, extracting tapes and cords.
-fn render_noun_debug(noun: nockapp::Noun, depth: usize) -> String {
-    use nockapp::Noun;
-    if depth > 8 { return "...".into(); }
-    if noun.is_atom() {
-        if let Ok(a) = noun.as_atom() {
-            if a.as_u64() == Ok(0) { return "0".into(); }
+fn render_noun_debug(noun: nockapp::Noun, space: &nockvm::noun::NounSpace, depth: usize) -> String {
+    use nockvm::noun::NounHandle;
+    if depth > 8 {
+        return "...".into();
+    }
+    let noun_h = NounHandle::new(noun, space);
+    if noun_h.is_atom() {
+        if let Ok(a) = noun_h.as_atom() {
+            if a.as_u64() == Ok(0) {
+                return "0".into();
+            }
             let bytes = a.as_ne_bytes();
             let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
             if len > 0 && len < 200 {
@@ -822,27 +828,37 @@ fn render_noun_debug(noun: nockapp::Noun, depth: usize) -> String {
             return format!("@{}bytes", len);
         }
         "?atom".into()
-    } else if let Ok(cell) = noun.as_cell() {
-        let head: Noun = cell.head();
-        let tail: Noun = cell.tail();
+    } else if let Ok(cell_h) = noun_h.as_cell() {
+        let head = cell_h.head().noun();
+        let tail = cell_h.tail().noun();
         // Check for tape (list of small atoms)
         let mut chars = Vec::new();
-        let mut walk: Noun = noun;
+        let mut walk = noun_h;
         let mut is_tape = true;
         while let Ok(c) = walk.as_cell() {
-            let h: Noun = c.head();
-            if let Ok(ha) = h.as_atom() {
+            if let Ok(ha) = c.head().as_atom() {
                 if let Ok(v) = ha.as_u64() {
-                    if v > 0 && v < 128 { chars.push(v as u8 as char); } else { is_tape = false; break; }
-                } else { is_tape = false; break; }
-            } else { is_tape = false; break; }
+                    if v > 0 && v < 128 {
+                        chars.push(v as u8 as char);
+                    } else {
+                        is_tape = false;
+                        break;
+                    }
+                } else {
+                    is_tape = false;
+                    break;
+                }
+            } else {
+                is_tape = false;
+                break;
+            }
             walk = c.tail();
         }
         if is_tape && !chars.is_empty() && walk.is_atom() {
             return format!("\"{}\"", chars.iter().collect::<String>());
         }
-        let h = render_noun_debug(head, depth + 1);
-        let t = render_noun_debug(tail, depth + 1);
+        let h = render_noun_debug(head, space, depth + 1);
+        let t = render_noun_debug(tail, space, depth + 1);
         format!("[{} {}]", h, t)
     } else {
         "?".into()
@@ -1047,81 +1063,95 @@ async fn prove_handler(
 
     if let Some(effect_slab) = effects.first() {
         let root_noun = slab_root(effect_slab);
+        let effect_space = effect_slab.noun_space();
         eprintln!("[prove] effect root: is_cell={}", root_noun.is_cell());
 
         // Check for [%prove-failed ~] — head is the cord "prove-failed"
-        let is_prove_failed = root_noun.as_cell().ok().and_then(|cell| {
-            cell.head().as_atom().ok().and_then(|a| {
-                let bytes = a.as_ne_bytes();
-                let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
-                if &bytes[..len] == b"prove-failed" { Some(()) } else { None }
+        let is_prove_failed = nockvm::noun::NounHandle::new(root_noun, &effect_space)
+            .as_cell()
+            .ok()
+            .and_then(|cell_h| {
+                cell_h.head().as_atom().ok().and_then(|a| {
+                    let bytes = a.as_ne_bytes();
+                    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+                    if &bytes[..len] == b"prove-failed" {
+                        Some(())
+                    } else {
+                        None
+                    }
+                })
             })
-        }).is_some();
+            .is_some();
 
         if is_prove_failed {
             // Extract trace from [%prove-failed trace-jam]
             // trace-jam is a jammed noun containing the mule crash trace
-            let tail_info = root_noun.as_cell().ok().map(|cell| {
-                let tail = cell.tail();
-                // The tail is (jam (list tank)) — CUE and walk the noun tree
-                if tail.is_atom() {
-                    let a = tail.as_atom().unwrap();
-                    let bytes = a.as_ne_bytes();
-                    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
-                    let _ = std::fs::write("/tmp/prove_trace.bin", &bytes[..len]);
-                    eprintln!("[prove] trace atom: {} bytes", len);
-                    // CUE the jammed trace
-                    let mut cue_slab: NounSlab = NounSlab::new();
-                    match cue_slab.cue_into(bytes::Bytes::copy_from_slice(&bytes[..len])) {
-                        Ok(cued) => {
-                            // Walk the list and render each tank
-                            let mut msg_parts: Vec<String> = Vec::new();
-                            let mut list = cued;
-                            for _ in 0..20 {
-                                if list.is_atom() { break; }
-                                if let Ok(cell) = list.as_cell() {
-                                    let tank = cell.head();
-                                    // Render tank: try to extract text
-                                    let rendered = render_noun_debug(tank, 0);
-                                    msg_parts.push(rendered);
-                                    list = cell.tail();
+            let tail_info = nockvm::noun::NounHandle::new(root_noun, &effect_space)
+                .as_cell()
+                .ok()
+                .map(|cell_h| {
+                    let tail = cell_h.tail();
+                    // The tail is (jam (list tank)) — CUE and walk the noun tree
+                    if tail.is_atom() {
+                        let a = tail.as_atom().unwrap();
+                        let bytes = a.as_ne_bytes();
+                        let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
+                        let _ = std::fs::write("/tmp/prove_trace.bin", &bytes[..len]);
+                        eprintln!("[prove] trace atom: {} bytes", len);
+                        // CUE the jammed trace
+                        let mut cue_slab: NounSlab = NounSlab::new();
+                        match cue_slab.cue_into(bytes::Bytes::copy_from_slice(&bytes[..len])) {
+                            Ok(cued) => {
+                                let cue_space = cue_slab.noun_space();
+                                let mut msg_parts: Vec<String> = Vec::new();
+                                let mut list = nockvm::noun::NounHandle::new(cued, &cue_space);
+                                for _ in 0..20 {
+                                    if list.is_atom() {
+                                        break;
+                                    }
+                                    if let Ok(cell) = list.as_cell() {
+                                        let tank = cell.head().noun();
+                                        let rendered = render_noun_debug(tank, &cue_space, 0);
+                                        msg_parts.push(rendered);
+                                        list = cell.tail();
+                                    }
+                                }
+                                if msg_parts.is_empty() {
+                                    format!("trace(cued): empty list")
+                                } else {
+                                    format!("trace(cued): {}", msg_parts.join(" | "))
                                 }
                             }
-                            if msg_parts.is_empty() {
-                                format!("trace(cued): empty list")
-                            } else {
-                                format!("trace(cued): {}", msg_parts.join(" | "))
+                            Err(e) => {
+                                eprintln!("[prove] CUE failed: {e}");
+                                if let Ok(s) = std::str::from_utf8(&bytes[..len]) {
+                                    return format!("trace: {}", s);
+                                }
+                                format!("trace-raw: {} bytes", len)
                             }
                         }
-                        Err(e) => {
-                            // Not a jammed noun — try as UTF-8
-                            eprintln!("[prove] CUE failed: {e}");
-                            if let Ok(s) = std::str::from_utf8(&bytes[..len]) {
-                                return format!("trace: {}", s);
-                            }
-                            format!("trace-raw: {} bytes", len)
-                        }
-                    }
-                } else {
-                    // Tail is a cell — walk it directly as (list tank)
-                    let mut msg_parts: Vec<String> = Vec::new();
-                    let mut list = tail;
-                    for _ in 0..20 {
-                        if list.is_atom() { break; }
-                        if let Ok(cell) = list.as_cell() {
-                            let tank = cell.head();
-                            let rendered = render_noun_debug(tank, 0);
-                            msg_parts.push(rendered);
-                            list = cell.tail();
-                        }
-                    }
-                    if msg_parts.is_empty() {
-                        "trace: empty".to_string()
                     } else {
-                        format!("trace(cell): {}", msg_parts.join(" | "))
+                        let mut msg_parts: Vec<String> = Vec::new();
+                        let mut list = tail;
+                        for _ in 0..20 {
+                            if list.is_atom() {
+                                break;
+                            }
+                            if let Ok(cell) = list.as_cell() {
+                                let tank = cell.head().noun();
+                                let rendered = render_noun_debug(tank, &effect_space, 0);
+                                msg_parts.push(rendered);
+                                list = cell.tail();
+                            }
+                        }
+                        if msg_parts.is_empty() {
+                            "trace: empty".to_string()
+                        } else {
+                            format!("trace(cell): {}", msg_parts.join(" | "))
+                        }
                     }
-                }
-            }).unwrap_or_else(|| "unknown".to_string());
+                })
+                .unwrap_or_else(|| "unknown".to_string());
             eprintln!("[prove] kernel returned %prove-failed — proof crashed, note NOT settled");
             eprintln!("[prove] {}", tail_info);
             prove_error = Some(
@@ -1132,16 +1162,16 @@ async fn prove_handler(
                 ),
             );
         } else {
-            match root_noun.as_cell() {
-                Ok(cell) => {
-                    let proof_noun = cell.tail();
+            match nockvm::noun::NounHandle::new(root_noun, &effect_space).as_cell() {
+                Ok(cell_h) => {
+                    let proof_noun = cell_h.tail().noun();
                     eprintln!(
                         "[prove] proof noun: is_cell={}, is_atom={}",
                         proof_noun.is_cell(),
                         proof_noun.is_atom()
                     );
                     let mut proof_slab: NounSlab<NockJammer> = NounSlab::new();
-                    proof_slab.copy_into(proof_noun);
+                    proof_slab.copy_into(proof_noun, &effect_space);
                     let proof_bytes = proof_slab.jam();
                     eprintln!("[prove] proof jammed: {} bytes", proof_bytes.len());
                     proof_bytes_raw = Some(proof_bytes.clone());
@@ -1150,7 +1180,9 @@ async fn prove_handler(
                 }
                 Err(_) => {
                     if root_noun.is_atom() {
-                        let val = root_noun.as_atom().map(|a| a.as_u64());
+                        let val = root_noun
+                            .as_atom()
+                            .map(|a| a.in_space(&effect_space).as_u64());
                         eprintln!("[prove] effect is unexpected atom: {:?}", val);
                     }
                     prove_error = Some("unexpected effect structure from %prove poke".into());
@@ -1376,11 +1408,15 @@ async fn diag_sig_hash_handler(
             Ok(effects) => {
                 if let Some(effect) = effects.first() {
                     let root = unsafe { *effect.root() };
+                    let space = effect.noun_space();
                     // Effect is [%diag-sieve result ...]. Check if result is %ok.
-                    if let Ok(cell) = root.as_cell() {
-                        if let Ok(inner) = cell.tail().as_cell() {
-                            let tag = inner.head();
-                            let is_ok = tag.as_atom().map(|a| a.as_u64() == Ok(nockvm_macros::tas!(b"ok") as u64)).unwrap_or(false);
+                    if let Ok(cell_h) = nockvm::noun::NounHandle::new(root, &space).as_cell() {
+                        if let Ok(inner) = cell_h.tail().as_cell() {
+                            let is_ok = inner
+                                .head()
+                                .as_atom()
+                                .map(|a| a.as_u64() == Ok(nockvm_macros::tas!(b"ok") as u64))
+                                .unwrap_or(false);
                             if !is_ok {
                                 errors.push("diag-sieve: sieve FAILED (;;(seeds:txv1 ...) crashed)".into());
                             }
@@ -1413,10 +1449,10 @@ async fn diag_sig_hash_handler(
         Ok(effects) => {
             if let Some(effect) = effects.first() {
                 let root = unsafe { *effect.root() };
-                if let Ok(cell) = root.as_cell() {
-                    if let Ok(inner) = cell.tail().as_cell() {
-                        let tag = inner.head();
-                        let tag_str = if let Ok(a) = tag.as_atom() {
+                let space = effect.noun_space();
+                if let Ok(cell_h) = nockvm::noun::NounHandle::new(root, &space).as_cell() {
+                    if let Ok(inner) = cell_h.tail().as_cell() {
+                        let tag_str = if let Ok(a) = inner.head().as_atom() {
                             if a.as_u64() == Ok(nockvm_macros::tas!(b"ok") as u64) {
                                 "ok".to_string()
                             } else if a.as_u64() == Ok(nockvm_macros::tas!(b"fail") as u64) {
