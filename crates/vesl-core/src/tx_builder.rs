@@ -10,7 +10,7 @@ use nockapp::NockApp;
 use nockchain_types::tx_engine::common::{Hash, Nicks};
 use nockchain_types::tx_engine::v1::tx::{Seeds, Spends};
 use nockvm::ext::make_tas;
-use nockvm::noun::{IndirectAtom, D, T};
+use nockvm::noun::{IndirectAtom, NounAllocator, NounHandle, D, T};
 use noun_serde::{NounDecode, NounEncode};
 
 // ---------------------------------------------------------------------------
@@ -137,13 +137,15 @@ pub fn extract_hash_from_effect(effects: &[NounSlab], expected_tag: &str) -> any
         .ok_or_else(|| anyhow::anyhow!("no effects returned from %{expected_tag} poke"))?;
 
     let root = slab_root(effect_slab);
-    let cell = root
+    let space = effect_slab.noun_space();
+    let root_h = NounHandle::new(root, &space);
+    let cell_h = root_h
         .as_cell()
         .map_err(|_| anyhow::anyhow!("{expected_tag} effect is not a cell"))?;
 
     // The hash is the tail (head is the tag atom)
-    let hash_noun = cell.tail();
-    Hash::from_noun(&hash_noun).map_err(|e| anyhow::anyhow!("{expected_tag} hash decode: {e}"))
+    let hash_noun = cell_h.tail().noun();
+    Hash::from_noun(&hash_noun, &space).map_err(|e| anyhow::anyhow!("{expected_tag} hash decode: {e}"))
 }
 
 /// Convert a byte slice (JAM'd output) to a Nock atom.
@@ -155,7 +157,7 @@ pub fn bytes_to_atom(slab: &mut NounSlab, bytes: &[u8]) -> nockvm::noun::Noun {
     // of this call. new_raw_bytes_ref copies into the slab allocator.
     unsafe {
         let mut indirect = IndirectAtom::new_raw_bytes_ref(slab, bytes);
-        indirect.normalize_as_atom().as_noun()
+        indirect.normalize_as_atom_stack().as_noun()
     }
 }
 

@@ -66,7 +66,7 @@ pub fn serialize_settlement(
     expected_root: &Tip5Hash,
 ) -> Vec<u8> {
     let payload = build_settlement_payload(stack, note, manifest, expected_root);
-    nock_noun_rs::jam_to_bytes(stack, payload)
+    nock_noun_rs::jam_to_bytes(payload, &stack.noun_space())
 }
 
 // ---------------------------------------------------------------------------

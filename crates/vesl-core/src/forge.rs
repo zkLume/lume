@@ -9,8 +9,9 @@
 //! (including prover jet registration) is the hull's responsibility.
 
 use anyhow::Result;
-use nock_noun_rs::{atom_from_u64, make_atom_in, make_list_in, make_loobean, make_tag_in, jam_to_bytes, new_stack, NounSlab, T};
+use nock_noun_rs::{atom_from_u64, jam_to_bytes, make_atom_in, make_list_in, make_loobean, make_tag_in, NounSlab, T};
 use nockchain_tip5_rs::tip5_to_atom_le_bytes;
+use nockvm::noun::{NounAllocator, NounHandle};
 
 use crate::types::ForgePayload;
 
@@ -41,15 +42,17 @@ pub fn extract_proof_from_effects(effects: &[NounSlab]) -> Result<Option<bytes::
     };
 
     let root_noun = slab_root(effect_slab);
+    let space = effect_slab.noun_space();
+    let root_h = NounHandle::new(root_noun, &space);
 
-    let cell = match root_noun.as_cell() {
+    let cell_h = match root_h.as_cell() {
         Ok(c) => c,
         Err(_) => return Ok(None), // atom effect = no proof
     };
 
     // Check for failure tag: [%prove-failed ...]
-    if let Ok(tag_atom) = cell.head().as_atom() {
-        let tag_bytes = tag_atom.as_ne_bytes();
+    if let Ok(tag_atom_h) = cell_h.head().as_atom() {
+        let tag_bytes = tag_atom_h.as_ne_bytes();
         if tag_bytes.starts_with(b"prove-failed") {
             return Ok(None);
         }
@@ -57,10 +60,9 @@ pub fn extract_proof_from_effects(effects: &[NounSlab]) -> Result<Option<bytes::
 
     // Success: [result-note proof] where result-note is a cell.
     // The proof noun may be an atom or a cell — JAM it to get bytes.
-    if cell.head().is_cell() {
-        let proof_noun = cell.tail();
-        let mut stack = new_stack();
-        let proof_bytes = jam_to_bytes(&mut stack, proof_noun);
+    if cell_h.head().is_cell() {
+        let proof_noun = cell_h.tail().noun();
+        let proof_bytes = jam_to_bytes(proof_noun, &space);
         if !proof_bytes.is_empty() {
             return Ok(Some(bytes::Bytes::from(proof_bytes)));
         }
@@ -142,10 +144,7 @@ fn build_forge_poke(tag: &str, payload: &ForgePayload) -> NounSlab {
 
     let tag_noun = make_tag_in(&mut slab, tag);
     let payload_noun = build_forge_payload_in(&mut slab, payload);
-    let payload_bytes = {
-        let mut stack = new_stack();
-        jam_to_bytes(&mut stack, payload_noun)
-    };
+    let payload_bytes = jam_to_bytes(payload_noun, &slab.noun_space());
     let jammed = make_atom_in(&mut slab, &payload_bytes);
 
     let poke = nockvm::noun::T(&mut slab, &[tag_noun, jammed]);
@@ -183,6 +182,7 @@ pub struct Forge;
 mod tests {
     use super::*;
     use nock_noun_rs::{cue_from_bytes, new_stack, D};
+    use nockvm::noun::{NounAllocator, NounHandle};
     use crate::types::{LeafWithProof, Note, NoteState};
     use nockchain_tip5_rs::{ProofNode, TIP5_ZERO};
 
@@ -295,9 +295,11 @@ mod tests {
         ] {
             let slab = builder(&payload);
             let root = slab_root(&slab);
-            let cell = root.as_cell().expect("poke is a cell");
-            let tag_atom = cell.head().as_atom().expect("head is a tag atom");
-            let tag_bytes = tag_atom.as_ne_bytes();
+            let space = slab.noun_space();
+            let root_h = NounHandle::new(root, &space);
+            let cell_h = root_h.as_cell().expect("poke is a cell");
+            let tag_atom_h = cell_h.head().as_atom().expect("head is a tag atom");
+            let tag_bytes = tag_atom_h.as_ne_bytes();
             // Trim trailing null bytes for comparison
             let len = tag_bytes.iter().rposition(|&b| b != 0).map_or(0, |p| p + 1);
             let tag_str = std::str::from_utf8(&tag_bytes[..len]).expect("tag is valid utf8");
@@ -315,9 +317,11 @@ mod tests {
         let root = slab_root(&slab);
 
         // root = [%prove jammed-payload-atom]
-        let cell = root.as_cell().expect("poke is a cell");
-        let jammed_atom = cell.tail().as_atom().expect("tail is jammed payload atom");
-        let jammed_bytes = jammed_atom.as_ne_bytes();
+        let space = slab.noun_space();
+        let root_h = NounHandle::new(root, &space);
+        let cell_h = root_h.as_cell().expect("poke is a cell");
+        let jammed_atom_h = cell_h.tail().as_atom().expect("tail is jammed payload atom");
+        let jammed_bytes = jammed_atom_h.as_ne_bytes();
         let len = jammed_bytes.iter().rposition(|&b| b != 0).map_or(0, |p| p + 1);
 
         // CUE the jammed payload back to a noun
@@ -328,29 +332,31 @@ mod tests {
         // forge-payload = [note leaves expected-root]
         // note = [id=@ hull=@ root=@ state=[%pending 0]]
         assert!(cued.is_cell(), "cued payload must be a cell");
-        let outer = cued.as_cell().unwrap();
+        let space = stack.noun_space();
+        let cued_h = NounHandle::new(cued, &space);
+        let outer = cued_h.as_cell().unwrap();
 
         // Head is note (a cell)
-        let note_noun = outer.head();
-        assert!(note_noun.is_cell(), "note must be a cell [id hull root state]");
+        let note_noun_h = outer.head();
+        assert!(note_noun_h.is_cell(), "note must be a cell [id hull root state]");
 
         // Verify note.id
-        let note_cell = note_noun.as_cell().unwrap();
-        let id_atom = note_cell.head().as_atom().expect("note.id is an atom");
-        assert_eq!(id_atom.as_u64().unwrap(), 7, "note.id should be 7");
+        let note_cell_h = note_noun_h.as_cell().unwrap();
+        let id_atom_h = note_cell_h.head().as_atom().expect("note.id is an atom");
+        assert_eq!(id_atom_h.as_u64().unwrap(), 7, "note.id should be 7");
 
         // rest = [leaves expected-root]
-        let rest = outer.tail();
-        assert!(rest.is_cell(), "rest [leaves expected-root] must be a cell");
-        let rest_cell = rest.as_cell().unwrap();
+        let rest_h = outer.tail();
+        assert!(rest_h.is_cell(), "rest [leaves expected-root] must be a cell");
+        let rest_cell_h = rest_h.as_cell().unwrap();
 
         // leaves is a list (cell or 0 for empty)
-        let leaves_noun = rest_cell.head();
-        assert!(leaves_noun.is_cell(), "leaves list with 3 items must be a cell");
+        let leaves_noun_h = rest_cell_h.head();
+        assert!(leaves_noun_h.is_cell(), "leaves list with 3 items must be a cell");
 
         // expected-root is an atom
-        let exp_root = rest_cell.tail();
-        assert!(exp_root.is_atom(), "expected-root must be an atom");
+        let exp_root_h = rest_cell_h.tail();
+        assert!(exp_root_h.is_atom(), "expected-root must be an atom");
     }
 
     // --- Determinism: same payload produces identical jammed bytes ---
@@ -361,9 +367,10 @@ mod tests {
         let slab_1 = build_forge_prove_poke(&payload);
         let slab_2 = build_forge_prove_poke(&payload);
 
-        let mut stack = new_stack();
-        let bytes_1 = jam_to_bytes(&mut stack, slab_root(&slab_1));
-        let bytes_2 = jam_to_bytes(&mut stack, slab_root(&slab_2));
+        let space_1 = slab_1.noun_space();
+        let space_2 = slab_2.noun_space();
+        let bytes_1 = jam_to_bytes(slab_root(&slab_1), &space_1);
+        let bytes_2 = jam_to_bytes(slab_root(&slab_2), &space_2);
         assert_eq!(bytes_1, bytes_2, "same payload must produce identical jam output");
     }
 
@@ -394,7 +401,9 @@ mod tests {
         let mut stack = new_stack();
         let cued = cue_from_bytes(&mut stack, &bytes).expect("JAM'd proof must CUE");
         let recovered = cued.as_atom().expect("original was an atom");
-        let orig_bytes = recovered.as_ne_bytes();
+        let space = stack.noun_space();
+        let recovered_h = recovered.in_space(&space);
+        let orig_bytes = recovered_h.as_ne_bytes();
         let len = orig_bytes.iter().rposition(|&b| b != 0).map_or(0, |p| p + 1);
         assert_eq!(&orig_bytes[..len], &[0xCA, 0xFE, 0xBA, 0xBE]);
     }
@@ -444,7 +453,9 @@ mod tests {
         let mut stack = new_stack();
         let cued = cue_from_bytes(&mut stack, &bytes).expect("JAM'd proof must CUE");
         let recovered = cued.as_atom().expect("original was an atom");
-        let orig = recovered.as_ne_bytes();
+        let space = stack.noun_space();
+        let recovered_h = recovered.in_space(&space);
+        let orig = recovered_h.as_ne_bytes();
         let len = orig.iter().rposition(|&b| b != 0).map_or(0, |p| p + 1);
         assert_eq!(&orig[..len], &[0x01, 0x02, 0x03, 0x04, 0x05]);
     }

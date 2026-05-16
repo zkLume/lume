@@ -120,19 +120,29 @@ pub fn build_register_poke(hull_id: u64, root: &Tip5Hash) -> NounSlab {
 mod tests {
     use super::*;
     use nock_noun_rs::new_stack;
+    use nockvm::noun::NounHandle;
+
+    fn atom_u64(stack: &NockStack, noun: Noun) -> u64 {
+        let space = stack.noun_space();
+        noun.as_atom()
+            .unwrap()
+            .in_space(&space)
+            .as_u64()
+            .unwrap()
+    }
 
     #[test]
     fn loobean_encoding() {
-        assert_eq!(make_loobean(true).as_atom().unwrap().as_u64().unwrap(), 0);
-        assert_eq!(make_loobean(false).as_atom().unwrap().as_u64().unwrap(), 1);
+        let stack = new_stack();
+        assert_eq!(atom_u64(&stack, make_loobean(true)), 0);
+        assert_eq!(atom_u64(&stack, make_loobean(false)), 1);
     }
 
     #[test]
     fn cord_encoding() {
         let mut stack = new_stack();
         let abc = make_cord(&mut stack, "abc");
-        let val = abc.as_atom().unwrap().as_u64().unwrap();
-        assert_eq!(val, 97 + 98 * 256 + 99 * 65536);
+        assert_eq!(atom_u64(&stack, abc), 97 + 98 * 256 + 99 * 65536);
     }
 
     #[test]
@@ -144,8 +154,7 @@ mod tests {
             .enumerate()
             .map(|(i, &b)| (b as u64) << (i * 8))
             .sum();
-        let val = tag.as_atom().unwrap().as_u64().unwrap();
-        assert_eq!(val, expected);
+        assert_eq!(atom_u64(&stack, tag), expected);
     }
 
     #[test]
@@ -165,7 +174,8 @@ mod tests {
         let list = proof_list_to_noun(&mut stack, &proof);
 
         assert!(list.is_cell(), "list must be a cell");
-        let first = list.as_cell().unwrap();
+        let space = stack.noun_space();
+        let first = NounHandle::new(list, &space).as_cell().unwrap();
         assert!(
             first.head().is_cell(),
             "first element must be a cell [hash side]"

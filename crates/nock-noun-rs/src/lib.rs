@@ -17,7 +17,7 @@
 //! let cell = T(&mut stack, &[tag, body]);
 //!
 //! // Jam to bytes for wire transmission
-//! let bytes = jam_to_bytes(&mut stack, cell);
+//! let bytes = jam_to_bytes(cell, &stack.noun_space());
 //! ```
 //!
 //! # Memory Model
@@ -38,9 +38,9 @@
 //! - **Tags (@tas)**: ASCII string as atom. `%pending` = atom from `b"pending"`.
 
 // Re-exports — the essentials every NockApp needs.
-pub use nockapp::noun::slab::NounSlab;
+pub use nockapp::noun::slab::{Jammer, NockJammer, NounSlab};
 pub use nockvm::mem::NockStack;
-pub use nockvm::noun::{Cell, D, IndirectAtom, Noun, NounAllocator, T};
+pub use nockvm::noun::{Cell, D, IndirectAtom, Noun, NounAllocator, NounSpace, T};
 pub use nockvm::serialization::{cue, jam};
 
 /// Default NockStack size: 8 MB (in 64-bit words).
@@ -69,11 +69,11 @@ pub fn make_atom(stack: &mut NockStack, bytes: &[u8]) -> Noun {
     if bytes.is_empty() {
         return D(0);
     }
-    // SAFETY: bytes is a valid slice. new_raw_bytes_ref copies data into the
-    // NockStack allocator. normalize_as_atom produces a canonical atom representation.
+    // SAFETY: new_raw_bytes_ref already writes into the stack arena; stack
+    // normalization direct-encodes without resolving through NounSpace.
     unsafe {
         let mut indirect = IndirectAtom::new_raw_bytes_ref(stack, bytes);
-        indirect.normalize_as_atom().as_noun()
+        indirect.normalize_as_atom_stack().as_noun()
     }
 }
 
@@ -117,13 +117,10 @@ pub fn make_list(stack: &mut NockStack, items: &[Noun]) -> Noun {
 
 /// Jam a noun into bytes for wire transmission.
 ///
-/// Returns the minimal LE byte representation of the jammed atom.
-/// This is the format Hoon's `cue` expects.
-pub fn jam_to_bytes(stack: &mut NockStack, noun: Noun) -> Vec<u8> {
-    let atom = jam(stack, noun);
-    let bytes = atom.as_ne_bytes();
-    let len = bytes.iter().rposition(|&b| b != 0).map_or(0, |pos| pos + 1);
-    bytes[..len].to_vec()
+/// `space` must cover the arena where `noun` was allocated (e.g. `stack.noun_space()`
+/// or `slab.noun_space()`). This is the format Hoon's `cue` expects.
+pub fn jam_to_bytes(noun: Noun, space: &NounSpace) -> Vec<u8> {
+    NockJammer::jam(noun, space).to_vec()
 }
 
 /// Cue bytes back into a noun.
@@ -151,11 +148,10 @@ pub fn make_atom_in(alloc: &mut impl NounAllocator, bytes: &[u8]) -> Noun {
     if bytes.is_empty() {
         return D(0);
     }
-    // SAFETY: bytes is a valid slice. new_raw_bytes_ref copies data into
-    // the allocator. normalize_as_atom produces a canonical atom representation.
+    // SAFETY: new_raw_bytes_ref produces stack-pointer atoms; use stack normalization.
     unsafe {
         let mut indirect = IndirectAtom::new_raw_bytes_ref(alloc, bytes);
-        indirect.normalize_as_atom().as_noun()
+        indirect.normalize_as_atom_stack().as_noun()
     }
 }
 
@@ -191,12 +187,23 @@ pub fn make_list_in(alloc: &mut impl NounAllocator, items: &[Noun]) -> Noun {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nockvm::noun::NounHandle;
+
+    fn atom_u64(stack: &NockStack, noun: Noun) -> u64 {
+        let space = stack.noun_space();
+        noun.as_atom()
+            .unwrap()
+            .in_space(&space)
+            .as_u64()
+            .unwrap()
+    }
 
     #[test]
     fn loobean_encoding() {
         // %.y (true) = 0, %.n (false) = 1
-        assert_eq!(make_loobean(true).as_atom().unwrap().as_u64().unwrap(), 0);
-        assert_eq!(make_loobean(false).as_atom().unwrap().as_u64().unwrap(), 1);
+        let stack = new_stack();
+        assert_eq!(atom_u64(&stack, make_loobean(true)), 0);
+        assert_eq!(atom_u64(&stack, make_loobean(false)), 1);
     }
 
     #[test]
@@ -204,8 +211,7 @@ mod tests {
         let mut stack = new_stack();
         // 'abc' in Hoon = 97 + 98*256 + 99*65536 = 6513249
         let abc = make_cord(&mut stack, "abc");
-        let val = abc.as_atom().unwrap().as_u64().unwrap();
-        assert_eq!(val, 97 + 98 * 256 + 99 * 65536);
+        assert_eq!(atom_u64(&stack, abc), 97 + 98 * 256 + 99 * 65536);
     }
 
     #[test]
@@ -218,15 +224,14 @@ mod tests {
             .enumerate()
             .map(|(i, &b)| (b as u64) << (i * 8))
             .sum();
-        let val = tag.as_atom().unwrap().as_u64().unwrap();
-        assert_eq!(val, expected);
+        assert_eq!(atom_u64(&stack, tag), expected);
     }
 
     #[test]
     fn empty_atom() {
         let mut stack = new_stack();
         let noun = make_atom(&mut stack, &[]);
-        assert_eq!(noun.as_atom().unwrap().as_u64().unwrap(), 0);
+        assert_eq!(atom_u64(&stack, noun), 0);
     }
 
     #[test]
@@ -236,7 +241,8 @@ mod tests {
         let items = [D(1), D(2), D(3)];
         let list = make_list(&mut stack, &items);
 
-        let c1 = list.as_cell().unwrap();
+        let space = stack.noun_space();
+        let c1 = NounHandle::new(list, &space).as_cell().unwrap();
         assert_eq!(c1.head().as_atom().unwrap().as_u64().unwrap(), 1);
 
         let c2 = c1.tail().as_cell().unwrap();
@@ -253,7 +259,7 @@ mod tests {
     fn empty_list() {
         let mut stack = new_stack();
         let list = make_list(&mut stack, &[]);
-        assert_eq!(list.as_atom().unwrap().as_u64().unwrap(), 0);
+        assert_eq!(atom_u64(&stack, list), 0);
     }
 
     #[test]
@@ -263,7 +269,7 @@ mod tests {
         let body = make_cord(&mut stack, "world");
         let cell = T(&mut stack, &[tag, body]);
 
-        let bytes = jam_to_bytes(&mut stack, cell);
+        let bytes = jam_to_bytes(cell, &stack.noun_space());
         assert!(!bytes.is_empty());
 
         let restored = cue_from_bytes(&mut stack, &bytes).expect("cue must succeed");

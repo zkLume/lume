@@ -68,11 +68,13 @@ pub fn derive_pubkey(sk: &[Belt; 8]) -> SchnorrPubkey {
 pub fn pubkey_hash(pk: &SchnorrPubkey) -> Hash {
     use nockapp::noun::slab::NounSlab;
     use nockchain_math::tip5::hash::hash_noun_varlen_digest;
+    use nockvm::noun::NounAllocator;
     use noun_serde::NounEncode;
 
     let mut slab: NounSlab = NounSlab::new();
     let noun = pk.to_noun(&mut slab);
-    let digest = hash_noun_varlen_digest(&mut slab, noun)
+    let space = slab.noun_space();
+    let digest = hash_noun_varlen_digest(&mut slab, noun, &space)
         .expect("hash_noun_varlen_digest should not fail on a valid SchnorrPubkey noun");
     Hash::from_limbs(&digest)
 }

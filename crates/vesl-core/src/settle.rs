@@ -13,7 +13,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use nock_noun_rs::NounSlab;
+use nock_noun_rs::{NounAllocator, NounSlab};
 use nockchain_client_rs::ChainClient;
 use nockchain_tip5_rs::{verify_proof, Tip5Hash};
 
@@ -180,8 +180,8 @@ impl<V: IntentVerifier> Settle<V> {
     /// it to `NockApp::poke()` themselves.
     pub fn poke_bytes(&self, payload: &GraftPayload) -> Result<Vec<u8>> {
         let slab = self.verifier.build_settle_poke(payload)?;
-        let mut stack = nock_noun_rs::new_stack();
-        Ok(nock_noun_rs::jam_to_bytes(&mut stack, slab_root(&slab)))
+        let space = slab.noun_space();
+        Ok(nock_noun_rs::jam_to_bytes(slab_root(&slab), &space))
     }
 
     /// Settle a manifest directly (convenience for RAG callers).
@@ -340,10 +340,7 @@ pub fn build_settle_poke(
 
     let tag = make_tag_in(&mut slab, "settle");
     let payload = build_settlement_payload_in(&mut slab, note, manifest, expected_root);
-    let payload_bytes = {
-        let mut stack = new_stack();
-        jam_to_bytes(&mut stack, payload)
-    };
+    let payload_bytes = jam_to_bytes(payload, &slab.noun_space());
     let jammed = make_atom_in(&mut slab, &payload_bytes);
 
     let poke = nockvm::noun::T(&mut slab, &[tag, jammed]);
@@ -365,10 +362,7 @@ pub fn build_prove_poke(
 
     let tag = make_tag_in(&mut slab, "prove");
     let payload = build_settlement_payload_in(&mut slab, note, manifest, expected_root);
-    let payload_bytes = {
-        let mut stack = new_stack();
-        jam_to_bytes(&mut stack, payload)
-    };
+    let payload_bytes = jam_to_bytes(payload, &slab.noun_space());
     let jammed = make_atom_in(&mut slab, &payload_bytes);
 
     let poke = nockvm::noun::T(&mut slab, &[tag, jammed]);

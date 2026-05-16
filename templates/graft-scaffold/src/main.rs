@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fs;
 
 use vesl_core::{Guard, Mint, Tip5Hash, tip5_to_atom_le_bytes};
-use nock_noun_rs::{atom_from_u64, jam_to_bytes, make_atom_in, make_tag_in, new_stack};
+use nock_noun_rs::{atom_from_u64, jam_to_bytes, make_atom_in, make_tag_in, NounAllocator};
 use nockapp::kernel::boot;
 use nockapp::noun::slab::NounSlab;
 use nockapp::wire::{SystemWire, Wire};
@@ -119,10 +119,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let payload_noun = T(&mut slab, &[note, data, exp_root]);
 
         // Jam the payload and send as [%vesl-settle jammed]
-        let payload_bytes = {
-            let mut stack = new_stack();
-            jam_to_bytes(&mut stack, payload_noun)
-        };
+        let payload_bytes = jam_to_bytes(payload_noun, &slab.noun_space());
         let jammed = make_atom_in(&mut slab, &payload_bytes);
         let tag = make_tag_in(&mut slab, "vesl-settle");
         let poke = T(&mut slab, &[tag, jammed]);
@@ -150,10 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let exp_root = make_atom_in(&mut slab, &rb);
         let payload_noun = T(&mut slab, &[note, data, exp_root]);
 
-        let payload_bytes = {
-            let mut stack = new_stack();
-            jam_to_bytes(&mut stack, payload_noun)
-        };
+        let payload_bytes = jam_to_bytes(payload_noun, &slab.noun_space());
         let jammed = make_atom_in(&mut slab, &payload_bytes);
         let tag = make_tag_in(&mut slab, "vesl-settle");
         let poke = T(&mut slab, &[tag, jammed]);
